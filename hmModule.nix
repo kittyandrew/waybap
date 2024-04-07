@@ -12,7 +12,7 @@ in {
   meta.maintainers = with maintainers; [kittyandrew];
 
   options.services.waybar-data-provider = with lib.types; {
-    enable = mkEnableOption "barbie";
+    enable = mkEnableOption "waybar-data-provider";
     package = mkOption {
       type = package;
       default = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
