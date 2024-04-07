@@ -7,19 +7,21 @@ use crate::weather::utils::*;
 
 pub fn parse_data(weather: Value) -> String {
     let current = &weather["current_condition"][0];
-    let feels_like = current["FeelsLikeC"].as_str().unwrap();
+    let like = current["FeelsLikeC"].as_str().unwrap();
     let weather_code = current["weatherCode"].as_str().unwrap();
-    let weather_icon = WEATHER_CODES
+    let icon = WEATHER_CODES
         .iter()
         .find(|(code, _)| *code == weather_code.parse::<i32>().unwrap())
         .map(|(_, symbol)| symbol)
         .unwrap();
 
-    // Display 'Feels like' on the sidebar.
-    let text = format!("<span size=\"small\"> {}\n {}°</span>", weather_icon, feels_like);
-
     let mut result = HashMap::new();
-    result.insert("text", text);
+
+    // Display 'Feels like' on the sidebar.
+    result.insert(
+        "text",
+        format!("<span size=\"small\"> {icon}\n {like}°</span>"),
+    );
 
     let area = &weather["nearest_area"][0];
     let mut tooltip = format!(
@@ -28,12 +30,11 @@ pub fn parse_data(weather: Value) -> String {
         area["region"][0]["value"].as_str().unwrap(),
         area["country"][0]["value"].as_str().unwrap()
     );
-    tooltip += &format!(
-        "<b>{}</b> {}°\n",
-        current["weatherDesc"][0]["value"].as_str().unwrap(),
-        current["temp_C"].as_str().unwrap()
-    );
-    tooltip += &format!("Feels like: {}°\n", feels_like);
+
+    let weather_desc = current["weatherDesc"][0]["value"].as_str().unwrap();
+    let temp_c = current["temp_C"].as_str().unwrap();
+    tooltip += &format!("{icon} <b>{weather_desc}</b> {temp_c}°\n");
+    tooltip += &format!("Feels like: {like}°\n");
     tooltip += &format!("Wind: {}Km/h\n", current["windspeedKmph"].as_str().unwrap());
     tooltip += &format!("Humidity: {}%\n", current["humidity"].as_str().unwrap());
 
@@ -58,17 +59,13 @@ pub fn parse_data(weather: Value) -> String {
         let date = NaiveDate::parse_from_str(day["date"].as_str().unwrap(), "%Y-%m-%d").unwrap();
         tooltip += &format!("{}</b>\n", date.format("%d.%m %Y"));
 
-        tooltip += &format!(
-            "⬆️ {}° ⬇️ {}° ",
-            day["maxtempC"].as_str().unwrap(),
-            day["mintempC"].as_str().unwrap(),
-        );
+        let day_max_temp = day["maxtempC"].as_str().unwrap();
+        let day_min_temp = day["mintempC"].as_str().unwrap();
+        tooltip += &format!("⬆️ {day_max_temp}° ⬇️ {day_min_temp}° ",);
 
-        tooltip += &format!(
-            "🌅 {} 🌇 {}\n",
-            format_day_time(day, "sunrise"),
-            format_day_time(day, "sunset"),
-        );
+        let tt_sunrise = format_day_time(day, "sunrise");
+        let tt_sunset = format_day_time(day, "sunset");
+        tooltip += &format!("🌅 {tt_sunrise} 🌇 {tt_sunset}\n");
 
         for hour in day["hourly"].as_array().unwrap() {
             let hour_time = hour["time"].as_str().unwrap();
@@ -84,25 +81,23 @@ pub fn parse_data(weather: Value) -> String {
                 continue;
             }
 
-            let mut tooltip_line = format!(
+            let hour_code = hour["weatherCode"]
+                .as_str()
+                .unwrap()
+                .parse::<i32>()
+                .unwrap();
+            tooltip += &format!(
                 "{} {} {} {}",
                 format_time(hour["time"].as_str().unwrap()),
                 WEATHER_CODES
                     .iter()
-                    .find(|(code, _)| *code
-                        == hour["weatherCode"]
-                            .as_str()
-                            .unwrap()
-                            .parse::<i32>()
-                            .unwrap())
+                    .find(|(code, _)| *code == hour_code)
                     .map(|(_, symbol)| symbol)
                     .unwrap(),
                 format!("{: >3}°", hour["FeelsLikeC"].as_str().unwrap()),
                 hour["weatherDesc"][0]["value"].as_str().unwrap(),
             );
-            tooltip_line += format!(", {}", format_chances(hour)).as_str();
-            tooltip_line += "\n";
-            tooltip += &tooltip_line;
+            tooltip += &format!(", {}\n", format_chances(hour)).as_str();
         }
     }
     result.insert("tooltip", tooltip);
