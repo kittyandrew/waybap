@@ -2,6 +2,15 @@
 name = "waybar-data-provider"
 version = "0.1.0"
 edition = "2021"
+authors = [ "kittyandrew <andrew@kittymail.me>" ]
+
+# I have no clue what any of this does:
+[profile.release]
+codegen-units = 1
+panic = "abort"
+opt-level = "z"
+strip = true
+lto = "fat"
 
 [dependencies]
 chrono = { version = "0.4.37", default-features = false, features = ["clock"] }
