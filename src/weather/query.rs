@@ -10,9 +10,15 @@ pub fn query() -> Option<String> {
 
     // @TODO: We need some way to detect that address changed and invalidate the cache.
     match client.get("https://wttr.in/Shkarivka?format=j1").send() {
-        Ok(response) => Some(response.text().unwrap()),
+        Ok(response) => match response.text() {
+            Ok(text) => Some(text),
+            Err(err) => {
+                eprintln!("Request text read failed: {err}!");
+                None
+            },
+        },
         Err(err) => {
-            println!("Request failed!: {err} (timeout was {timeout})!");
+            eprintln!("Request failed: {err} (timeout was {timeout})!");
             None
         }
     }
