@@ -15,7 +15,7 @@ pub fn parse_data(weather: Value) -> String {
         .map(|(_, symbol)| symbol)
         .unwrap();
     let indicator = current["temp_C"].as_str().unwrap();
-    let text = format!("{}\n{}", weather_icon, indicator);
+    let text = format!("<span size=\"small\"> {}\n {}°</span>", weather_icon, indicator);
 
     let mut result = HashMap::new();
     result.insert("text", text);
