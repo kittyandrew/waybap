@@ -14,15 +14,16 @@ pub fn parse_data(weather: Value) -> String {
         .find(|(code, _)| *code == weather_code.parse::<i32>().unwrap())
         .map(|(_, symbol)| symbol)
         .unwrap();
-    let indicator = current["temp_C"].as_str().unwrap();
-    let text = format!("<span size=\"small\"> {}\n {}°</span>", weather_icon, indicator);
+
+    // Display 'Feels like' on the sidebar.
+    let text = format!("<span size=\"small\"> {}\n {}°</span>", weather_icon, feels_like);
 
     let mut result = HashMap::new();
     result.insert("text", text);
 
     let area = &weather["nearest_area"][0];
     let mut tooltip = format!(
-        "<span size=\"large\">{}, {}, {}</span>\n",
+        "<span size=\"large\">{}, {}, {}</span>\n\n",
         area["areaName"][0]["value"].as_str().unwrap(),
         area["region"][0]["value"].as_str().unwrap(),
         area["country"][0]["value"].as_str().unwrap()
@@ -36,8 +37,6 @@ pub fn parse_data(weather: Value) -> String {
     tooltip += &format!("Wind: {}Km/h\n", current["windspeedKmph"].as_str().unwrap());
     tooltip += &format!("Humidity: {}%\n", current["humidity"].as_str().unwrap());
 
-    let now = Local::now();
-
     let today = Local::now().date_naive();
     let mut forecast = weather["weather"].as_array().unwrap().clone();
     forecast.retain(|item| {
@@ -45,6 +44,8 @@ pub fn parse_data(weather: Value) -> String {
             NaiveDate::parse_from_str(item["date"].as_str().unwrap(), "%Y-%m-%d").unwrap();
         item_date >= today
     });
+
+    let now = Local::now();
 
     for (i, day) in forecast.iter().enumerate() {
         tooltip += "\n<b>";
