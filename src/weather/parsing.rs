@@ -1,5 +1,5 @@
 use chrono::prelude::*;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_aux::prelude::*;
 use serde_json::{value::from_value, value::to_value, Value};
 use std::collections::HashMap;
@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use crate::weather::constants::get_icon_by_code;
 use crate::weather::utils::*;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct Current {
     #[serde(rename = "FeelsLikeC")]
     feels: String,
@@ -113,7 +113,7 @@ pub fn parse_data(raw_weather: Value) -> Result<String, Box<dyn std::error::Erro
                 hour.desc[0]["value"].as_str().unwrap(),
             );
 
-            let raw_hour = to_value::<Value>(&hour).unwrap();
+            let raw_hour = to_value(&hour).unwrap();
             tooltip += &format!(", {}\n", format_chances(&raw_hour)).as_str();
         }
     }

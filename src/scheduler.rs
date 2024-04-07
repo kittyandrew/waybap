@@ -62,30 +62,29 @@ impl Job {
         if next_time <= now.timestamp() {
             println!("[{:?}]: Running {name}!", chrono::Utc::now(), name = self.name);
 
-            // @TODO: Propagate and show errors..
-            let err_message = format!("Could not access '{name}' service!", name = self.name);
-            let default = format!("{{\"text\":\"⛓️‍💥\", \"tooltip\":\"{err_message}\"}}");
-
             let mut iterations = 0;
-            let result = loop {
+            loop {
                 // @TODO: Make ipinfo request to get local addr.
                 // @TODO: Add option to hardcode your location.
                 match (self.run)() {
-                    Some(output) => break output,
+                    Some(output) => {
+                        let cachefile = get_cache_fp(&self.name);
+                        let mut f = File::create(cachefile).expect("A");
+                        let _ = f.write_all(output.as_bytes());
+                        break;
+                    }
                     None => {
                         iterations += 1;
                         thread::sleep(std::time::Duration::from_secs(iterations));
 
                         if iterations == self.retries {
-                            break default;
+                            // @TODO: Propagate errors..
+                            eprintln!("Failed running '{name}' after retries!", name = &self.name);
+                            break;
                         }
                     }
                 }
-            };
-
-            let cachefile = get_cache_fp(&self.name);
-            let mut f = File::create(cachefile).expect("A");
-            let _ = f.write_all(result.as_bytes());
+            }
 
             println!("[{:?}]: Finished {name}!", chrono::Utc::now(), name = self.name);
 
