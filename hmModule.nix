@@ -30,7 +30,7 @@ in {
       };
 
       Service = {
-        ExecStart = "${cfg.package}/bin/waybar-data-provider";
+        ExecStart = "${cfg.package}/bin/waybar-data-provider serve";
         ExecReload = "${pkgs.coreutils}/bin/kill -SIGUSR2 $MAINPID";
         Restart = "on-failure";
         KillMode = "mixed";
