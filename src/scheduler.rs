@@ -60,11 +60,7 @@ impl Job {
 
         let next_time = self.last_run.timestamp() + self.interval as i64;
         if next_time <= now.timestamp() {
-            println!(
-                "[{:?}]: Running {name}!",
-                chrono::Utc::now(),
-                name = self.name
-            );
+            println!("[{:?}]: Running {name}!", chrono::Utc::now(), name = self.name);
 
             // @TODO: Propagate and show errors..
             let err_message = format!("Could not access '{name}' service!", name = self.name);
@@ -91,11 +87,7 @@ impl Job {
             let mut f = File::create(cachefile).expect("A");
             let _ = f.write_all(result.as_bytes());
 
-            println!(
-                "[{:?}]: Finished {name}!",
-                chrono::Utc::now(),
-                name = self.name
-            );
+            println!("[{:?}]: Finished {name}!", chrono::Utc::now(), name = self.name);
 
             self.last_run = now;
         }

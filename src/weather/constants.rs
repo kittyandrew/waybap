@@ -60,3 +60,11 @@ pub const WEATHER_CODES: &[(i32, &str)] = &[
     (428, "🌨️"),
     (431, "🌨️"),
 ];
+
+// Use binary search to access the map:
+pub fn get_icon_by_code(key: i32) -> &'static str {
+    WEATHER_CODES
+        .binary_search_by(|(k, _)| k.cmp(&key))
+        .map(|x| WEATHER_CODES[x].1)
+        .unwrap()
+}

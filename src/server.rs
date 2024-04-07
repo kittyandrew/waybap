@@ -16,8 +16,8 @@ fn serve_500(request: Request) -> io::Result<()> {
 
 fn serve_json(request: Request, bytes: &[u8]) -> io::Result<()> {
     let content_type_json = "application/json; charset=utf-8";
-    let content_type_header = Header::from_bytes("Content-Type", content_type_json)
-        .expect("That we didn't put any garbage in the headers");
+    let content_type_header =
+        Header::from_bytes("Content-Type", content_type_json).expect("That we didn't put any garbage in the headers");
     request.respond(Response::from_data(bytes).with_header(content_type_header))
 }
 
@@ -40,8 +40,8 @@ fn serve_api_stats(request: Request) -> io::Result<()> {
         }
     };
 
-    let content_type_header = Header::from_bytes("Content-Type", "application/json")
-        .expect("That we didn't put any garbage in the headers");
+    let content_type_header =
+        Header::from_bytes("Content-Type", "application/json").expect("That we didn't put any garbage in the headers");
     request.respond(Response::from_string(&json).with_header(content_type_header))
 }
 
@@ -50,8 +50,14 @@ fn serve_api_weather(request: Request) -> io::Result<()> {
     let raw_data = read_to_string(cache_fp)?;
     let raw_data = serde_json::from_str::<serde_json::Value>(&raw_data).unwrap();
 
-    let result = weather::parse_data(raw_data);
-    serve_json(request, result.as_bytes())
+    match weather::parse_data(raw_data) {
+        Ok(result) => serve_json(request, result.as_bytes()),
+        Err(err) => {
+            let err_message = format!("Weather service failed: {err}!");
+            let err_res = format!("{{\"text\":\"⛓️‍💥\", \"tooltip\":\"{err_message}\"}}");
+            serve_json(request, err_res.as_bytes())
+        }
+    }
 }
 
 fn serve_request(request: Request) -> io::Result<()> {
