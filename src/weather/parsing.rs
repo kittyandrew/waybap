@@ -20,7 +20,14 @@ pub fn parse_data(weather: Value) -> String {
     let mut result = HashMap::new();
     result.insert("text", text);
 
+    let area = &weather["nearest_area"][0];
     let mut tooltip = format!(
+        "<span size=\"large\">{}, {}, {}</span>\n",
+        area["areaName"][0]["value"].as_str().unwrap(),
+        area["region"][0]["value"].as_str().unwrap(),
+        area["country"][0]["value"].as_str().unwrap()
+    );
+    tooltip += &format!(
         "<b>{}</b> {}°\n",
         current["weatherDesc"][0]["value"].as_str().unwrap(),
         current["temp_C"].as_str().unwrap()
@@ -28,13 +35,6 @@ pub fn parse_data(weather: Value) -> String {
     tooltip += &format!("Feels like: {}°\n", feels_like);
     tooltip += &format!("Wind: {}Km/h\n", current["windspeedKmph"].as_str().unwrap());
     tooltip += &format!("Humidity: {}%\n", current["humidity"].as_str().unwrap());
-    let area = &weather["nearest_area"][0];
-    tooltip += &format!(
-        "Location: {}, {}, {}\n",
-        area["areaName"][0]["value"].as_str().unwrap(),
-        area["region"][0]["value"].as_str().unwrap(),
-        area["country"][0]["value"].as_str().unwrap()
-    );
 
     let now = Local::now();
 
