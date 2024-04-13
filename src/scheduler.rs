@@ -12,7 +12,7 @@ use std::thread;
 
 pub fn get_cache_fp(name: &str) -> String {
     let home_dir = std::env::var("HOME").expect("Home directory needs to exist!");
-    let cache_dir = format!("{home_dir}/.cache/waybar-data-provider");
+    let cache_dir = format!("{home_dir}/.cache/waybap");
     let _ = fs::create_dir_all(&cache_dir);
     format!("{cache_dir}/{name}.json")
 }

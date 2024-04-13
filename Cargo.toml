@@ -1,5 +1,5 @@
 [package]
-name = "waybar-data-provider"
+name = "waybap"
 version = "0.1.0"
 edition = "2021"
 authors = [ "kittyandrew <andrew@kittymail.me>" ]
