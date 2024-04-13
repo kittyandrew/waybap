@@ -1,6 +1,7 @@
 use std::env;
 use std::process::ExitCode;
 
+mod crypto;
 mod scheduler;
 mod server;
 mod weather;
@@ -12,8 +13,8 @@ fn usage(program: &str) {
 }
 
 fn start_scheduler() -> Result<(), ()> {
-    let weather_job = scheduler::Job::new("weather", 60 * 10, weather::query);
-    weather_job.run();
+    scheduler::Job::new("weather", 60 * 10, weather::query).run();
+    scheduler::Job::new("crypto", 60 * 15, crypto::query).run();
 
     Ok(())
 }

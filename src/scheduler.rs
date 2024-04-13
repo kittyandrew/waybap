@@ -64,8 +64,6 @@ impl Job {
 
             let mut iterations = 0;
             loop {
-                // @TODO: Make ipinfo request to get local addr.
-                // @TODO: Add option to hardcode your location.
                 match (self.run)() {
                     Some(output) => {
                         let cachefile = get_cache_fp(&self.name);
@@ -78,7 +76,6 @@ impl Job {
                         thread::sleep(std::time::Duration::from_secs(iterations));
 
                         if iterations == self.retries {
-                            // @TODO: Propagate errors..
                             eprintln!("Failed running '{name}' after retries!", name = &self.name);
                             break;
                         }

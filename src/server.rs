@@ -2,6 +2,7 @@ use std::fs::read_to_string;
 use std::io;
 use std::str;
 
+use crate::crypto;
 use crate::scheduler::get_cache_fp;
 use crate::weather;
 use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
@@ -60,6 +61,21 @@ fn serve_api_weather(request: Request) -> io::Result<()> {
     }
 }
 
+fn serve_api_crypto(request: Request) -> io::Result<()> {
+    let cache_fp = get_cache_fp("crypto");
+    let raw_data = read_to_string(cache_fp)?;
+    let raw_data = serde_json::from_str::<serde_json::Value>(&raw_data).unwrap();
+
+    match crypto::parse_data(raw_data) {
+        Ok(result) => serve_json(request, result.as_bytes()),
+        Err(err) => {
+            let err_message = format!("Crypto service failed: {err}!");
+            let err_res = format!("{{\"text\":\"⛓️‍💥\", \"tooltip\":\"{err_message}\"}}");
+            serve_json(request, err_res.as_bytes())
+        }
+    }
+}
+
 fn serve_request(request: Request) -> io::Result<()> {
     println!(
         "INFO: received request! method: {:?}, url: {:?}",
@@ -70,6 +86,7 @@ fn serve_request(request: Request) -> io::Result<()> {
     match (request.method(), request.url()) {
         (Method::Get, "/admin/stats") => serve_api_stats(request),
         (Method::Get, "/api/weather") => serve_api_weather(request),
+        (Method::Get, "/api/crypto") => serve_api_crypto(request),
         _ => serve_404(request),
     }
 }
