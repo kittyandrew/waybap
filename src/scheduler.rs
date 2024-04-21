@@ -67,7 +67,7 @@ impl Job {
                 match (self.run)() {
                     Some(output) => {
                         let cachefile = get_cache_fp(&self.name);
-                        let mut f = File::create(cachefile).expect("A");
+                        let mut f = File::create(cachefile).expect("can create cache file");
                         let _ = f.write_all(output.as_bytes());
                         break;
                     }

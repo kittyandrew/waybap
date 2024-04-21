@@ -62,9 +62,9 @@ pub const WEATHER_CODES: &[(i32, &str)] = &[
 ];
 
 // Use binary search to access the map:
-pub fn get_icon_by_code(key: i32) -> &'static str {
+pub fn get_icon_by_code(key: i32) -> Result<&'static str, String> {
     WEATHER_CODES
         .binary_search_by(|(k, _)| k.cmp(&key))
         .map(|x| WEATHER_CODES[x].1)
-        .unwrap()
+        .map_err(|err| format!("weather code map search failed: {err}"))
 }

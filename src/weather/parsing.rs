@@ -48,7 +48,7 @@ struct Weather {
 pub fn parse_data(raw_weather: Value) -> Result<String, Box<dyn std::error::Error>> {
     let weather = from_value::<Weather>(raw_weather)?;
     let current = &weather.current[0];
-    let icon = get_icon_by_code(current.code);
+    let icon = get_icon_by_code(current.code)?;
 
     let mut result = HashMap::new();
 
@@ -59,13 +59,13 @@ pub fn parse_data(raw_weather: Value) -> Result<String, Box<dyn std::error::Erro
     let area = &weather.areas[0];
     let mut tooltip = format!(
         "<span size=\"large\">{}, {}, {}</span>\n\n",
-        area["areaName"][0]["value"].as_str().ok_or("Area name failed!")?,
-        area["region"][0]["value"].as_str().unwrap(),
-        area["country"][0]["value"].as_str().unwrap()
+        area["areaName"][0]["value"].as_str().ok_or("Area name was empty!")?,
+        area["region"][0]["value"].as_str().ok_or("Area region was empty!")?,
+        area["country"][0]["value"].as_str().ok_or("Area country was empty!")?
     );
 
-    let weather_desc = current.desc[0]["value"].as_str().unwrap();
-    let temp = current.temp.clone().unwrap();
+    let weather_desc = current.desc[0]["value"].as_str().ok_or("Weather description empty!")?;
+    let temp = current.temp.clone().ok_or("Temperature failed to clone!")?;
     tooltip += &format!("{icon} <b>{weather_desc}</b> {temp}°\n");
     tooltip += &format!("Feels like: {feels}°\n");
     tooltip += &format!("Wind: {}Km/h\n", current.windspeed);
@@ -86,12 +86,12 @@ pub fn parse_data(raw_weather: Value) -> Result<String, Box<dyn std::error::Erro
             tooltip += "Tomorrow, ";
         }
 
-        let date = NaiveDate::parse_from_str(&day.date, "%Y-%m-%d").unwrap();
+        let date = NaiveDate::parse_from_str(&day.date, "%Y-%m-%d")?;
         tooltip += &format!("{}</b>\n", date.format("%d.%m %Y"));
         tooltip += &format!("⬆️ {max}° ⬇️ {min}° ", max = &day.max, min = &day.min);
 
-        let tt_sunrise = format_day_time(&day.astronomy[0], "sunrise");
-        let tt_sunset = format_day_time(&day.astronomy[0], "sunset");
+        let tt_sunrise = format_day_time(&day.astronomy[0], "sunrise")?;
+        let tt_sunset = format_day_time(&day.astronomy[0], "sunset")?;
         tooltip += &format!("🌅 {tt_sunrise} 🌇 {tt_sunset}\n");
 
         for hour in day.hourly.iter() {
@@ -108,7 +108,7 @@ pub fn parse_data(raw_weather: Value) -> Result<String, Box<dyn std::error::Erro
             tooltip += &format!(
                 "{} {} {} {}",
                 format!("{:02}", hour_time.replace("00", "").parse::<i32>().unwrap()),
-                get_icon_by_code(hour.code),
+                get_icon_by_code(hour.code)?,
                 format!("{: >3}°", hour.feels),
                 hour.desc[0]["value"].as_str().unwrap(),
             );

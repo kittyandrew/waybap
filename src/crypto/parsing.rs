@@ -30,7 +30,7 @@ pub fn parse_data(raw_crypto: Value) -> Result<String, Box<dyn std::error::Error
         if coin.symbol == "btc" {
             // @TODO: We have to do this, because of hardcoded color/emoji.
             if i != 0 {
-                return Err("Well, bitcoin is not the first...".into());
+                return Err("Bitcoin has to be at the very top for this to work...".into());
             }
             text = format!(
                 "{text}<span foreground=\"{color}\" size=\"x-small\">{price:.1}k</span>",

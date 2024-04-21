@@ -17,8 +17,7 @@ fn serve_500(request: Request) -> io::Result<()> {
 
 fn serve_json(request: Request, bytes: &[u8]) -> io::Result<()> {
     let content_type_json = "application/json; charset=utf-8";
-    let content_type_header =
-        Header::from_bytes("Content-Type", content_type_json).expect("That we didn't put any garbage in the headers");
+    let content_type_header = Header::from_bytes("Content-Type", content_type_json).expect("valid header passed");
     request.respond(Response::from_data(bytes).with_header(content_type_header))
 }
 
@@ -41,15 +40,14 @@ fn serve_api_stats(request: Request) -> io::Result<()> {
         }
     };
 
-    let content_type_header =
-        Header::from_bytes("Content-Type", "application/json").expect("That we didn't put any garbage in the headers");
+    let content_type_header = Header::from_bytes("Content-Type", "application/json").expect("valid header passed");
     request.respond(Response::from_string(&json).with_header(content_type_header))
 }
 
 fn serve_api_weather(request: Request) -> io::Result<()> {
     let cache_fp = get_cache_fp("weather");
     let raw_data = read_to_string(cache_fp)?;
-    let raw_data = serde_json::from_str::<serde_json::Value>(&raw_data).unwrap();
+    let raw_data = serde_json::from_str::<serde_json::Value>(&raw_data)?;
 
     match weather::parse_data(raw_data) {
         Ok(result) => serve_json(request, result.as_bytes()),
@@ -64,7 +62,7 @@ fn serve_api_weather(request: Request) -> io::Result<()> {
 fn serve_api_crypto(request: Request) -> io::Result<()> {
     let cache_fp = get_cache_fp("crypto");
     let raw_data = read_to_string(cache_fp)?;
-    let raw_data = serde_json::from_str::<serde_json::Value>(&raw_data).unwrap();
+    let raw_data = serde_json::from_str::<serde_json::Value>(&raw_data)?;
 
     match crypto::parse_data(raw_data) {
         Ok(result) => serve_json(request, result.as_bytes()),

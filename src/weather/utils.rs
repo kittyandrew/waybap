@@ -1,11 +1,14 @@
 use chrono::NaiveTime;
 use std::collections::HashMap;
 
-pub fn format_day_time(astronomy: &serde_json::Value, key: &str) -> String {
-    NaiveTime::parse_from_str(astronomy[key].as_str().unwrap(), "%I:%M %p")
-        .unwrap()
-        .format("%H:%M")
-        .to_string()
+pub fn format_day_time(astronomy: &serde_json::Value, key: &str) -> Result<String, String> {
+    Ok(NaiveTime::parse_from_str(
+        astronomy[key].as_str().ok_or("Time of the day was not present!")?,
+        "%I:%M %p",
+    )
+    .map_err(|err| format!("Failed to parse time from string: {err}"))?
+    .format("%H:%M")
+    .to_string())
 }
 
 pub fn format_chances(hour: &serde_json::Value) -> String {
