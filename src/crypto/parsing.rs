@@ -41,7 +41,7 @@ pub fn parse_data(raw_crypto: Value) -> Result<String, Box<dyn std::error::Error
         let price_value = format!(
             "$<span foreground=\"{color}\">{price:.precision$}</span>",
             price = coin.price,
-            precision = 6 - format!("${price}", price = coin.price.round()).len(),
+            precision = 7 - format!("${price}", price = coin.price.round()).len(),
         );
         tooltip += format!(
             "{coin_name: <cname_len$}{price_value: <45}<span foreground=\"{color}\">{space}{change:.1}%</span>\n",
