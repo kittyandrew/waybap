@@ -75,6 +75,7 @@ fn serve_api_crypto(request: Request) -> io::Result<()> {
 }
 
 fn serve_request(request: Request) -> io::Result<()> {
+    #[cfg(debug_assertions)] // @TODO: only in debug mode, use proper log crate later
     println!(
         "INFO: received request! method: {:?}, url: {:?}",
         request.method(),
