@@ -28,25 +28,35 @@ Add waybap as a flake input:
 inputs.waybap.url = "github:kittyandrew/waybap";
 ```
 
-Install the package:
+### Option 1: Home Manager module
+
+Import the module and enable the service. This installs the binary and creates a systemd user service that starts with your Hyprland session.
 
 ```nix
-# home-manager config
+imports = [ inputs.waybap.homeManagerModule ];
+
+services.waybap.enable = true;
+```
+
+### Option 2: Manual setup
+
+Install the package and start it yourself (e.g. via Hyprland's `exec-once`):
+
+```nix
 home.packages = [
   inputs.waybap.packages.${pkgs.stdenv.hostPlatform.system}.default
 ];
 ```
 
-Start it with Hyprland:
-
 ```nix
-# hyprland config
 wayland.windowManager.hyprland.settings.exec-once = [
   "waybap serve 127.0.0.1:6963"
 ];
 ```
 
-Then point your Waybar custom modules at the API:
+### Waybar config
+
+Point your Waybar custom modules at the API:
 
 ```nix
 # waybar config
