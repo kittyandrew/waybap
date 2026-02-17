@@ -11,8 +11,7 @@ struct Coin {
     #[serde(deserialize_with = "deserialize_number_from_string")]
     price: f32,
     #[serde(rename = "price_change_percentage_24h")]
-    #[serde(deserialize_with = "deserialize_number_from_string")]
-    change: f32,
+    change: Option<f32>,
 }
 
 pub fn parse_data(raw_crypto: Value) -> Result<String, Box<dyn std::error::Error>> {
@@ -25,7 +24,8 @@ pub fn parse_data(raw_crypto: Value) -> Result<String, Box<dyn std::error::Error
     let mut tooltip = "<span size=\"xx-large\">Crypto</span>\n".to_string();
     let max_name_len = coins.iter().map(|c| c.name.len()).max().unwrap_or(0);
     for (i, coin) in coins.iter().enumerate() {
-        let color = if coin.change < 0.0 { "#e78284" } else { "#a6d189" };
+        let change = coin.change.unwrap_or(0.0);
+        let color = if change < 0.0 { "#e78284" } else { "#a6d189" };
         // @NOTE: Store bitcoin price to display in the sidebar.
         if coin.symbol == "btc" {
             // @TODO: We have to do this, because of hardcoded color/emoji.
@@ -43,11 +43,16 @@ pub fn parse_data(raw_crypto: Value) -> Result<String, Box<dyn std::error::Error
             price = coin.price,
             precision = 7 - format!("${price}", price = coin.price.round()).len(),
         );
+        let change_text = match coin.change {
+            Some(c) => format!(
+                "<span foreground=\"{color}\">{space}{c:.1}%</span>",
+                space = if c < 0.0 { "" } else { " " },
+            ),
+            None => "<span foreground=\"#949cbb\"> N/A</span>".to_string(),
+        };
         tooltip += format!(
-            "{coin_name: <cname_len$}{price_value: <45}<span foreground=\"{color}\">{space}{change:.1}%</span>\n",
+            "{coin_name: <cname_len$}{price_value: <45}{change_text}\n",
             cname_len = max_name_len + 10 + 3, // Adapt to coin name + markdown formatting + 3.
-            space = if coin.change < 0.0 { "" } else { " " }, // Align negative and positive %.
-            change = coin.change,
         )
         .as_ref();
     }
