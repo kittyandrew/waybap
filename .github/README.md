@@ -43,7 +43,7 @@ services.waybap.enable = true;
 Install the package and start it yourself (e.g. via Hyprland's `exec-once`):
 
 ```nix
-home.packages = [
+environment.systemPackages = [
   inputs.waybap.packages.${pkgs.stdenv.hostPlatform.system}.default
 ];
 ```
