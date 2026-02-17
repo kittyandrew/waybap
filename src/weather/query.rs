@@ -9,13 +9,19 @@ pub fn query() -> Option<String> {
     // @TODO: Add option to hardcode your location.
     // @TODO: We need some way to detect that address changed and invalidate the cache.
     match client.get("https://wttr.in/Shkarivka?format=j1").send() {
-        Ok(response) => match response.text() {
-            Ok(text) => Some(text),
-            Err(err) => {
-                eprintln!("Request text read failed: {err}!");
-                None
+        Ok(response) => {
+            if !response.status().is_success() {
+                eprintln!("Request returned non-success status: {}!", response.status());
+                return None;
             }
-        },
+            match response.text() {
+                Ok(text) => Some(text),
+                Err(err) => {
+                    eprintln!("Request text read failed: {err}!");
+                    None
+                }
+            }
+        }
         Err(err) => {
             eprintln!("Request failed: {err} (timeout was {timeout})!");
             None

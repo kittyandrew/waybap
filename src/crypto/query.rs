@@ -13,13 +13,19 @@ pub fn query() -> Option<String> {
     let params = "vs_currency=usd&order=market_cap_desc&per_page=10&price_change_percentage=24h";
     let crypto_url = format!("https://api.coingecko.com/api/v3/coins/markets?{params}");
     match client.get(crypto_url).send() {
-        Ok(response) => match response.text() {
-            Ok(text) => Some(text),
-            Err(err) => {
-                eprintln!("Request text read failed: {err}!");
-                None
+        Ok(response) => {
+            if !response.status().is_success() {
+                eprintln!("Request returned non-success status: {}!", response.status());
+                return None;
             }
-        },
+            match response.text() {
+                Ok(text) => Some(text),
+                Err(err) => {
+                    eprintln!("Request text read failed: {err}!");
+                    None
+                }
+            }
+        }
         Err(err) => {
             eprintln!("Request failed: {err} (timeout was {timeout})!");
             None

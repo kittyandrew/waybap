@@ -1,5 +1,4 @@
 use chrono::NaiveTime;
-use std::collections::HashMap;
 
 pub fn format_day_time(astronomy: &serde_json::Value, key: &str) -> Result<String, String> {
     Ok(NaiveTime::parse_from_str(
@@ -11,23 +10,20 @@ pub fn format_day_time(astronomy: &serde_json::Value, key: &str) -> Result<Strin
     .to_string())
 }
 
-pub fn format_chances(hour: &serde_json::Value) -> String {
-    let chances: HashMap<&str, String> = [
-        ("chanceoffog", "Fog".to_string()),
-        ("chanceoffrost", "Frost".to_string()),
-        ("chanceofovercast", "Overcast".to_string()),
-        ("chanceofrain", "Rain".to_string()),
-        ("chanceofsnow", "Snow".to_string()),
-        ("chanceofsunshine", "Sunshine".to_string()),
-        ("chanceofthunder", "Thunder".to_string()),
-        ("chanceofwindy", "Windy".to_string()),
-    ]
-    .iter()
-    .cloned()
-    .collect();
+const CHANCES: &[(&str, &str)] = &[
+    ("chanceoffog", "Fog"),
+    ("chanceoffrost", "Frost"),
+    ("chanceofovercast", "Overcast"),
+    ("chanceofrain", "Rain"),
+    ("chanceofsnow", "Snow"),
+    ("chanceofsunshine", "Sunshine"),
+    ("chanceofthunder", "Thunder"),
+    ("chanceofwindy", "Windy"),
+];
 
+pub fn format_chances(hour: &serde_json::Value) -> String {
     let mut conditions = vec![];
-    for (event, name) in chances.iter() {
+    for &(event, name) in CHANCES {
         if let Some(chance) = hour[event].as_str() {
             if let Ok(chance_value) = chance.parse::<u32>() {
                 if chance_value > 0 {

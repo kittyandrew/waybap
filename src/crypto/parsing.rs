@@ -9,9 +9,9 @@ struct Coin {
     symbol: String,
     #[serde(rename = "current_price")]
     #[serde(deserialize_with = "deserialize_number_from_string")]
-    price: f32,
+    price: f64,
     #[serde(rename = "price_change_percentage_24h")]
-    change: Option<f32>,
+    change: Option<f64>,
 }
 
 pub fn parse_data(raw_crypto: Value) -> Result<String, Box<dyn std::error::Error>> {
@@ -41,7 +41,7 @@ pub fn parse_data(raw_crypto: Value) -> Result<String, Box<dyn std::error::Error
         let price_value = format!(
             "$<span foreground=\"{color}\">{price:.precision$}</span>",
             price = coin.price,
-            precision = 7 - format!("${price}", price = coin.price.round()).len(),
+            precision = 7_usize.saturating_sub(format!("${price}", price = coin.price.round()).len()),
         );
         let change_text = match coin.change {
             Some(c) => format!(

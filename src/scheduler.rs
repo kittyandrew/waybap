@@ -6,7 +6,6 @@ use chrono::{DateTime, TimeZone, Utc};
 use std::fs;
 use std::fs::File;
 use std::io::prelude::*;
-use std::sync::{Arc, Mutex};
 
 use std::thread;
 
@@ -17,7 +16,7 @@ pub fn get_cache_fp(name: &str) -> String {
     format!("{cache_dir}/{name}.json")
 }
 
-pub fn get_last_modified_or_default(filepath: &str) -> DateTime<Utc> {
+fn get_last_modified_or_default(filepath: &str) -> DateTime<Utc> {
     if let Ok(metadata) = fs::metadata(filepath) {
         if let Ok(last_modified) = metadata.modified() {
             return last_modified.into();
@@ -49,7 +48,6 @@ impl Job {
             name: name.to_string(),
             interval,
             run: Box::new(run),
-            // @TODO: For now last tick was forever ago.
             last_run,
             retries: 3,
         }
@@ -67,8 +65,16 @@ impl Job {
                 match (self.run)() {
                     Some(output) => {
                         let cachefile = get_cache_fp(&self.name);
-                        let mut f = File::create(cachefile).expect("can create cache file");
-                        let _ = f.write_all(output.as_bytes());
+                        let tmp_file = format!("{cachefile}.tmp");
+                        let result = File::create(&tmp_file)
+                            .and_then(|mut f| {
+                                f.write_all(output.as_bytes())?;
+                                f.sync_all()
+                            })
+                            .and_then(|_| fs::rename(&tmp_file, &cachefile));
+                        if let Err(err) = result {
+                            eprintln!("ERROR: failed to write cache file '{cachefile}': {err}");
+                        }
                         break;
                     }
                     None => {
@@ -89,30 +95,24 @@ impl Job {
         }
     }
 
-    pub fn time_till_next_run(&self) -> std::time::Duration {
-        let mut duration = 0;
+    fn time_till_next_run(&self) -> std::time::Duration {
         let now = Utc::now();
-
         let next_time = self.last_run.timestamp() + self.interval as i64;
         let next_in_secs = next_time - now.timestamp();
-        if next_in_secs > 0 && (duration == 0 || next_in_secs < duration) {
-            duration = next_in_secs
-        }
-        std::time::Duration::new(duration as u64, 0)
+        let duration = if next_in_secs > 0 { next_in_secs as u64 } else { 0 };
+        std::time::Duration::new(duration, 0)
     }
 
-    pub fn run(self) {
+    pub fn run(mut self) {
         let job_name = format!("{name}-job", name = self.name);
-        // Honestly I do not know how to Rust, so here we go..
-        let meme = Arc::new(Mutex::new(self));
 
         std::thread::Builder::new()
             .name(job_name.clone())
             .spawn(move || {
                 println!("[{job_name}]: started thread - {:?}!", chrono::Utc::now());
                 loop {
-                    meme.lock().unwrap().tick();
-                    let sleep_for = meme.lock().unwrap().time_till_next_run();
+                    self.tick();
+                    let sleep_for = self.time_till_next_run();
                     println!("[{job_name}]: sleeping for {:?} ...", sleep_for);
                     std::thread::sleep(sleep_for);
                 }
