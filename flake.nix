@@ -9,10 +9,7 @@
       url = "github:nix-community/fenix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    crane = {
-      url = "github:ipetkov/crane";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    crane.url = "github:ipetkov/crane";
     home-manager = {
       url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -38,7 +35,7 @@
 
         packages.default = let
           craneLib =
-            inputs.crane.lib.${system}.overrideToolchain
+            (inputs.crane.mkLib pkgs).overrideToolchain
             inputs.fenix.packages.${system}.minimal.toolchain;
         in
           craneLib.buildPackage {
