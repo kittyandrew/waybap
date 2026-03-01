@@ -4,6 +4,7 @@ use std::process::ExitCode;
 
 mod crypto;
 mod scheduler;
+mod sensors;
 mod server;
 mod weather;
 
@@ -11,12 +12,13 @@ fn usage(program: &str) {
     eprintln!("Usage: {program} [SUBCOMMAND] [OPTIONS]");
     eprintln!("Subcommands:");
     eprintln!("    serve [address]       start the daemon (default: 127.0.0.1:6969)");
-    eprintln!("    test <weather|crypto> [--cache] fetch and parse live data (or cached)");
+    eprintln!("    test <weather|crypto|sensors> [--cache] fetch and parse live data (or cached)");
 }
 
 fn start_scheduler() {
     scheduler::Job::new("weather", 60 * 10, weather::query).run();
     scheduler::Job::new("crypto", 60 * 15, crypto::query).run();
+    scheduler::Job::new("sensors", 10, sensors::query).run();
 }
 
 fn run_query(
@@ -64,12 +66,13 @@ fn entry() -> Result<(), ()> {
         "test" => {
             let target = args.next().ok_or_else(|| {
                 usage(&program);
-                eprintln!("ERROR: 'test' requires a target: weather or crypto");
+                eprintln!("ERROR: 'test' requires a target: weather, crypto, or sensors");
             })?;
             let use_cache = args.next().map(|a| a == "--cache").unwrap_or(false);
             match target.as_str() {
                 "weather" => run_query("weather", use_cache, weather::query, weather::parse_data),
                 "crypto" => run_query("crypto", use_cache, crypto::query, crypto::parse_data),
+                "sensors" => run_query("sensors", use_cache, sensors::query, sensors::parse_data),
                 _ => {
                     usage(&program);
                     eprintln!("ERROR: unknown test target '{target}'");

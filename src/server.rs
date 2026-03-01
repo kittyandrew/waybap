@@ -3,6 +3,7 @@ use std::io;
 
 use crate::crypto;
 use crate::scheduler::get_cache_fp;
+use crate::sensors;
 use crate::weather;
 use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 
@@ -46,6 +47,17 @@ fn serve_api_crypto(request: Request) -> io::Result<()> {
     }
 }
 
+fn serve_api_sensors(request: Request) -> io::Result<()> {
+    let cache_fp = get_cache_fp("sensors");
+    let raw_data = read_to_string(cache_fp)?;
+    let raw_data = serde_json::from_str::<serde_json::Value>(&raw_data)?;
+
+    match sensors::parse_data(raw_data) {
+        Ok(result) => serve_json(request, result.as_bytes()),
+        Err(err) => serve_error_json(request, format!("Sensors service failed: {err}!")),
+    }
+}
+
 fn serve_request(request: Request) -> io::Result<()> {
     #[cfg(debug_assertions)] // @TODO: only in debug mode, use proper log crate later
     println!(
@@ -57,6 +69,7 @@ fn serve_request(request: Request) -> io::Result<()> {
     match (request.method(), request.url()) {
         (Method::Get, "/api/weather") => serve_api_weather(request),
         (Method::Get, "/api/crypto") => serve_api_crypto(request),
+        (Method::Get, "/api/sensors") => serve_api_sensors(request),
         _ => serve_404(request),
     }
 }
