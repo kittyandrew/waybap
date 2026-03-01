@@ -18,7 +18,7 @@ fn usage(program: &str) {
 fn start_scheduler() {
     scheduler::Job::new("weather", 60 * 10, weather::query).run();
     scheduler::Job::new("crypto", 60 * 15, crypto::query).run();
-    scheduler::Job::new("sensors", 10, sensors::query).run();
+    scheduler::Job::new("sensors", 1, sensors::query).run();
 }
 
 fn run_query(
