@@ -127,9 +127,9 @@ pub fn parse_data(raw_data: Value) -> Result<String, Box<dyn std::error::Error>>
     let text = match cpu_temp {
         Some(t) => {
             let color = temp_color(t, SensorKind::CpuGpu);
-            format!("<span size=\"x-small\">🌡️ <span foreground=\"{color}\">{t:.0}°</span></span>")
+            format!("<span size=\"x-small\">🌡 <span foreground=\"{color}\">{t:.0}°</span></span>")
         }
-        None => "<span size=\"x-small\">🌡️ <span foreground=\"#949cbb\">--°</span></span>".to_string(),
+        None => "<span size=\"x-small\">🌡 <span foreground=\"#949cbb\">--°</span></span>".to_string(),
     };
     result.insert("text", text);
 
