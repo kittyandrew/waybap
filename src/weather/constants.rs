@@ -1,70 +1,78 @@
 pub const WEATHER_CODES: &[(i32, &str)] = &[
-    (113, "☀️"),
-    (116, "🌤️"),
-    (119, "☁️"),
-    (122, "🌥️"),
-    (143, "🌫️"),
-    (176, "🌦️"),
-    (179, "🌧️"),
-    (182, "🌨️"),
-    (185, "🌨️"),
-    (200, "🌩️"),
-    (227, "❄️"),
-    (230, "❄️"),
-    (248, "🌫️"),
-    (260, "🌫️"),
-    (263, "🌧️"),
-    (266, "🌧️"),
-    (281, "🌦️"),
-    (284, "🌦️"),
-    (293, "🌧️"),
-    (296, "🌧️"),
-    (299, "🌧️"),
-    (302, "🌧️"),
-    (305, "🌧️"),
-    (308, "🌧️"),
-    (311, "🌧️"),
-    (314, "🌧️"),
-    (317, "🌧️"),
-    (320, "🌨️"),
-    (323, "🌨️"),
-    (326, "🌨️"),
-    (329, "🌨️"),
-    (332, "🌨️"),
-    (335, "🌨️"),
-    (338, "🌨️"),
-    (350, "🌨️"),
-    (353, "🌧️"),
-    (356, "🌧️"),
-    (359, "🌧️"),
-    (362, "🌨️"),
-    (365, "🌨️"),
-    (368, "🌨️"),
-    (371, "🌨️"),
-    (374, "🌨️"),
-    (377, "🌨️"),
-    (386, "🌩️"),
-    (389, "🌨️"),
-    (392, "🌨️"),
-    (395, "🌨️"),
-    (398, "🌨️"),
-    (401, "🌨️"),
-    (404, "🌨️"),
-    (407, "🌨️"),
-    (410, "🌨️"),
-    (413, "🌨️"),
-    (416, "🌨️"),
-    (419, "🌨️"),
-    (422, "🌨️"),
-    (425, "🌨️"),
-    (428, "🌨️"),
-    (431, "🌨️"),
+    (0, "☀️"),
+    (1, "🌤️"),
+    (2, "⛅"),
+    (3, "☁️"),
+    (45, "🌫️"),
+    (48, "🌫️"),
+    (51, "🌧️"),
+    (53, "🌧️"),
+    (55, "🌧️"),
+    (56, "🌧️"),
+    (57, "🌧️"),
+    (61, "🌦️"),
+    (63, "🌧️"),
+    (65, "🌧️"),
+    (66, "🌨️"),
+    (67, "🌨️"),
+    (71, "🌨️"),
+    (73, "🌨️"),
+    (75, "🌨️"),
+    (77, "🌨️"),
+    (80, "🌦️"),
+    (81, "🌧️"),
+    (82, "🌧️"),
+    (85, "🌨️"),
+    (86, "🌨️"),
+    (95, "🌩️"),
+    (96, "🌩️"),
+    (99, "🌩️"),
 ];
 
-// Use binary search to access the map:
-pub fn get_icon_by_code(key: i32) -> Result<&'static str, String> {
+pub const WEATHER_DESCRIPTIONS: &[(i32, &str)] = &[
+    (0, "Clear sky"),
+    (1, "Mainly clear"),
+    (2, "Partly cloudy"),
+    (3, "Overcast"),
+    (45, "Fog"),
+    (48, "Depositing rime fog"),
+    (51, "Light drizzle"),
+    (53, "Moderate drizzle"),
+    (55, "Dense drizzle"),
+    (56, "Light freezing drizzle"),
+    (57, "Dense freezing drizzle"),
+    (61, "Slight rain"),
+    (63, "Moderate rain"),
+    (65, "Heavy rain"),
+    (66, "Light freezing rain"),
+    (67, "Heavy freezing rain"),
+    (71, "Slight snowfall"),
+    (73, "Moderate snowfall"),
+    (75, "Heavy snowfall"),
+    (77, "Snow grains"),
+    (80, "Slight rain showers"),
+    (81, "Moderate rain showers"),
+    (82, "Violent rain showers"),
+    (85, "Slight snow showers"),
+    (86, "Heavy snow showers"),
+    (95, "Thunderstorm"),
+    (96, "Thunderstorm with slight hail"),
+    (99, "Thunderstorm with heavy hail"),
+];
+
+pub fn get_icon(code: i32, is_day: bool) -> &'static str {
+    if !is_day && (code == 0 || code == 1) {
+        return "🌙";
+    }
     WEATHER_CODES
-        .binary_search_by(|(k, _)| k.cmp(&key))
-        .map(|x| WEATHER_CODES[x].1)
-        .map_err(|err| format!("weather code map search failed: {err}"))
+        .binary_search_by(|(k, _)| k.cmp(&code))
+        .map(|i| WEATHER_CODES[i].1)
+        .unwrap_or("?")
+}
+
+pub fn get_description(code: i32) -> &'static str {
+    WEATHER_DESCRIPTIONS
+        .binary_search_by(|(k, _)| k.cmp(&code))
+        .map(|i| WEATHER_DESCRIPTIONS[i].1)
+        .unwrap_or("Unknown")
 }

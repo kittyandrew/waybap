@@ -1,41 +1,41 @@
-use chrono::NaiveTime;
+const DIRECTIONS: &[&str] = &["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
 
-pub fn format_day_time(astronomy: &serde_json::Value, key: &str) -> Result<String, String> {
-    Ok(NaiveTime::parse_from_str(
-        astronomy[key].as_str().ok_or("Time of the day was not present!")?,
-        "%I:%M %p",
-    )
-    .map_err(|err| format!("Failed to parse time from string: {err}"))?
-    .format("%H:%M")
-    .to_string())
+pub fn wind_direction(degrees: i32) -> &'static str {
+    let idx = ((degrees.rem_euclid(360) as f64 / 45.0).round() as usize) % 8;
+    DIRECTIONS[idx]
 }
 
-const CHANCES: &[(&str, &str)] = &[
-    ("chanceoffog", "Fog"),
-    ("chanceoffrost", "Frost"),
-    ("chanceofovercast", "Overcast"),
-    ("chanceofrain", "Rain"),
-    ("chanceofsnow", "Snow"),
-    ("chanceofsunshine", "Sunshine"),
-    ("chanceofthunder", "Thunder"),
-    ("chanceofwindy", "Windy"),
-];
-
-pub fn format_chances(hour: &serde_json::Value) -> String {
-    let mut conditions = vec![];
-    for &(event, name) in CHANCES {
-        if let Some(chance) = hour[event].as_str() {
-            if let Ok(chance_value) = chance.parse::<u32>() {
-                if chance_value > 0 {
-                    conditions.push((name, chance_value));
-                }
-            }
-        }
+pub fn format_conditions(code: i32, precip: i32, cloud: i32, snow: f64, vis: f64) -> String {
+    let mut parts = Vec::new();
+    if precip > 0 {
+        parts.push(format!("Precip {precip}%"));
     }
-    conditions.sort_by_key(|&(_, chance_value)| std::cmp::Reverse(chance_value));
-    conditions
-        .iter()
-        .map(|&(name, chance_value)| format!("{} {}%", name, chance_value))
-        .collect::<Vec<_>>()
-        .join(", ")
+    if snow > 0.0 {
+        parts.push(format!("Snow {snow:.1}cm"));
+    }
+    if vis < 1000.0 {
+        parts.push(format!("Vis {}m", vis.round() as i32));
+    }
+    if (code == 0 || code == 1 || code == 2) && cloud > 0 {
+        parts.push(format!("Clouds {cloud}%"));
+    }
+    if parts.is_empty() {
+        String::new()
+    } else {
+        format!(", {}", parts.join(", "))
+    }
+}
+
+pub fn color_temp(temp: i32) -> String {
+    if temp <= -10 {
+        format!("<span color=\"#949cbb\">{temp: >3}°</span>")
+    } else if temp <= 0 {
+        format!("<span color=\"#8caaee\">{temp: >3}°</span>")
+    } else if temp >= 31 {
+        format!("<span color=\"#e78284\">{temp: >3}°</span>")
+    } else if temp >= 16 {
+        format!("<span color=\"#ef9f76\">{temp: >3}°</span>")
+    } else {
+        format!("{temp: >3}°")
+    }
 }

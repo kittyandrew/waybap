@@ -1,5 +1,4 @@
-use serde_json::{value::from_value, Value};
-use std::collections::HashMap;
+use serde_json::{json, value::from_value, Value};
 
 use super::SensorData;
 
@@ -99,11 +98,11 @@ fn is_known_sensor(hwmon_name: &str) -> bool {
 }
 
 fn render_section(tooltip: &mut String, header: &str, labels: &[(&str, f64)], kind: SensorKind, pad_width: usize) {
-    tooltip.push_str(&format!("\n<b>{header}</b>\n"));
+    tooltip.push_str(&format!("\n<b>{}</b>\n", crate::pango::escape(header)));
     for &(label, temp) in labels {
         tooltip.push_str(&format!(
             "  {: <pad$} {}\n",
-            label,
+            crate::pango::escape(label),
             format_temp(temp, kind),
             pad = pad_width
         ));
@@ -121,8 +120,6 @@ pub fn parse_data(raw_data: Value) -> Result<String, Box<dyn std::error::Error>>
         .and_then(|g| g.readings.iter().find(|r| r.label == "Tctl").or(g.readings.first()))
         .map(|r| r.temp);
 
-    let mut result = HashMap::new();
-
     // Bar text: thermometer emoji + CPU temp on a single line
     let text = match cpu_temp {
         Some(t) => {
@@ -131,7 +128,6 @@ pub fn parse_data(raw_data: Value) -> Result<String, Box<dyn std::error::Error>>
         }
         None => "<span size=\"x-small\">\u{F050F} <span foreground=\"#949cbb\">--°</span></span>".to_string(),
     };
-    result.insert("text", text);
 
     // Tooltip: rich sensor dashboard
     let mut tooltip = "<span size=\"xx-large\">Hardware Sensors</span>\n".to_string();
@@ -212,6 +208,8 @@ pub fn parse_data(raw_data: Value) -> Result<String, Box<dyn std::error::Error>>
         render_section(&mut tooltip, &group.name, &labels, SensorKind::Motherboard, pad);
     }
 
-    result.insert("tooltip", format!("<tt>{tooltip}</tt>"));
-    Ok(serde_json::to_string(&result)?)
+    Ok(serde_json::to_string(&json!({
+        "text": text,
+        "tooltip": format!("<tt>{tooltip}</tt>"),
+    }))?)
 }

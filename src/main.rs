@@ -3,6 +3,7 @@ use std::fs::read_to_string;
 use std::process::ExitCode;
 
 mod crypto;
+mod pango;
 mod scheduler;
 mod sensors;
 mod server;

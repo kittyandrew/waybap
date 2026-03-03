@@ -1,5 +1,4 @@
-//! Simplified weather (wttr.in) querying and parsing implementation,
-//! borrowed from: https://github.com/bjesus/wttrbar/tree/main/src
+//! Weather data from Open-Meteo API (current conditions + 3-day forecast).
 mod constants;
 mod parsing;
 mod query;

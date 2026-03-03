@@ -1,7 +1,6 @@
 use serde::Deserialize;
 use serde_aux::prelude::*;
-use serde_json::{value::from_value, Value};
-use std::collections::HashMap;
+use serde_json::{json, value::from_value, Value};
 
 #[derive(Deserialize, Debug)]
 struct Coin {
@@ -22,7 +21,11 @@ pub fn parse_data(raw_crypto: Value) -> Result<String, Box<dyn std::error::Error
     //        of html (bruh): https://docs.gtk.org/Pango/pango_markup.html
     let mut text = "<span size=\"large\" color=\"#F7931A\"> 󰠓</span>\n".to_string(); // Using bitcoin orange.
     let mut tooltip = "<span size=\"xx-large\">Crypto</span>\n".to_string();
-    let max_name_len = coins.iter().map(|c| c.name.len()).max().unwrap_or(0);
+    let max_name_len = coins
+        .iter()
+        .map(|c| crate::pango::escape(&c.name).len())
+        .max()
+        .unwrap_or(0);
     for (i, coin) in coins.iter().enumerate() {
         let change = coin.change.unwrap_or(0.0);
         let color = if change < 0.0 { "#e78284" } else { "#a6d189" };
@@ -37,7 +40,7 @@ pub fn parse_data(raw_crypto: Value) -> Result<String, Box<dyn std::error::Error
                 price = coin.price / 1000.0
             );
         }
-        let coin_name = format!("  <b>{name}</b>:", name = coin.name);
+        let coin_name = format!("  <b>{name}</b>:", name = crate::pango::escape(&coin.name));
         let price_value = format!(
             "$<span foreground=\"{color}\">{price:.precision$}</span>",
             price = coin.price,
@@ -57,9 +60,8 @@ pub fn parse_data(raw_crypto: Value) -> Result<String, Box<dyn std::error::Error
         .as_ref();
     }
 
-    // We probably want a proper return type.
-    let mut result = HashMap::new();
-    result.insert("text", text);
-    result.insert("tooltip", format!("<tt>{tooltip}</tt>")); // We want to wrap in monofont.
-    Ok(serde_json::to_string(&result)?)
+    Ok(serde_json::to_string(&json!({
+        "text": text,
+        "tooltip": format!("<tt>{tooltip}</tt>"),
+    }))?)
 }

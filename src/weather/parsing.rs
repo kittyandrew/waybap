@@ -1,134 +1,179 @@
-use chrono::prelude::*;
-use serde::{Deserialize, Serialize};
-use serde_aux::prelude::*;
-use serde_json::{value::from_value, value::to_value, Value};
-use std::collections::HashMap;
+use chrono::{Local, NaiveDate};
+use serde::Deserialize;
+use serde_json::{json, value::from_value, Value};
 
-use crate::weather::constants::get_icon_by_code;
+use crate::weather::constants::{get_description, get_icon};
 use crate::weather::utils::*;
 
-#[derive(Deserialize, Serialize, Debug)]
-pub struct Current {
-    #[serde(rename = "FeelsLikeC")]
-    feels: String,
-    #[serde(rename = "weatherCode")]
-    #[serde(deserialize_with = "deserialize_number_from_string")]
-    code: i32,
-    #[serde(rename = "weatherDesc")]
-    desc: Vec<Value>,
-    #[serde(rename = "temp_C")]
-    temp: Option<String>, // Only present inside 'current_condition'.
-    #[serde(rename = "windspeedKmph")]
-    windspeed: String,
-    humidity: String,
-    time: Option<String>, // Only present inside 'Day'.
+#[derive(Deserialize)]
+struct QueryWrapper {
+    location_name: Option<String>,
+    data: OpenMeteoResponse,
 }
 
-#[derive(Deserialize, Debug)]
-struct Day {
-    date: String,
-    astronomy: Vec<Value>,
-    #[serde(rename = "maxtempC")]
-    max: String,
-    #[serde(rename = "mintempC")]
-    min: String,
-    hourly: Vec<Current>,
+#[derive(Deserialize)]
+struct OpenMeteoResponse {
+    current: CurrentWeather,
+    hourly: HourlyWeather,
+    daily: DailyWeather,
 }
 
-#[derive(Deserialize, Debug)]
-struct Weather {
-    #[serde(rename = "current_condition")]
-    current: Vec<Current>,
-    #[serde(rename = "weather")]
-    forecasts: Vec<Day>,
-    #[serde(rename = "nearest_area")]
-    areas: Vec<Value>,
+#[derive(Deserialize)]
+struct CurrentWeather {
+    time: String,
+    temperature_2m: f64,
+    apparent_temperature: f64,
+    weather_code: i32,
+    wind_speed_10m: f64,
+    wind_direction_10m: i32,
+    relative_humidity_2m: i32,
+    is_day: i32,
+}
+
+#[derive(Deserialize)]
+struct HourlyWeather {
+    time: Vec<String>,
+    apparent_temperature: Vec<f64>,
+    weather_code: Vec<i32>,
+    precipitation_probability: Vec<i32>,
+    cloud_cover: Vec<i32>,
+    snowfall: Vec<f64>,
+    visibility: Vec<f64>,
+    is_day: Vec<i32>,
+}
+
+#[derive(Deserialize)]
+struct DailyWeather {
+    time: Vec<String>,
+    #[allow(dead_code)]
+    weather_code: Vec<i32>,
+    temperature_2m_max: Vec<f64>,
+    temperature_2m_min: Vec<f64>,
+    precipitation_probability_max: Vec<i32>,
+    sunrise: Vec<String>,
+    sunset: Vec<String>,
 }
 
 pub fn parse_data(raw_weather: Value) -> Result<String, Box<dyn std::error::Error>> {
-    let weather = from_value::<Weather>(raw_weather)?;
-    let current = weather.current.first().ok_or("No current weather data!")?;
-    let icon = get_icon_by_code(current.code)?;
+    let wrapper = from_value::<QueryWrapper>(raw_weather)?;
+    let current = &wrapper.data.current;
+    let hourly = &wrapper.data.hourly;
+    let daily = &wrapper.data.daily;
 
-    let mut result = HashMap::new();
+    let is_day = current.is_day != 0;
+    let icon = get_icon(current.weather_code, is_day);
+    let feels = current.apparent_temperature.round() as i32;
+    let feels_colored = color_temp(feels);
 
-    // Display 'Feels like' on the sidebar.
-    let feels = &current.feels;
-    result.insert("text", format!("<span size=\"small\"> {icon}\n {feels}°</span>"));
+    let text = format!("<span size=\"small\"> {icon}\n {feels_colored}</span>");
 
-    let area = weather.areas.first().ok_or("No area data!")?;
-    let mut tooltip = format!(
-        "<span size=\"large\">{}, {}, {}</span>\n\n",
-        area["areaName"][0]["value"].as_str().ok_or("Area name was empty!")?,
-        area["region"][0]["value"].as_str().ok_or("Area region was empty!")?,
-        area["country"][0]["value"].as_str().ok_or("Area country was empty!")?
+    let mut tooltip = String::new();
+
+    // Location header
+    if let Some(ref name) = wrapper.location_name {
+        tooltip += &format!("<span size=\"large\">{}</span>\n\n", crate::pango::escape(name));
+    }
+
+    // Current conditions
+    let temp = current.temperature_2m.round() as i32;
+    let desc = get_description(current.weather_code);
+    tooltip += &format!("{icon} <b>{desc}</b> {}\n", color_temp(temp));
+    tooltip += &format!("Feels like: {feels_colored}\n");
+    tooltip += &format!(
+        "Wind: {} km/h {}\n",
+        current.wind_speed_10m.round() as i32,
+        wind_direction(current.wind_direction_10m)
     );
+    tooltip += &format!("Humidity: {}%\n", current.relative_humidity_2m);
 
-    let weather_desc = current
-        .desc
-        .first()
-        .and_then(|d| d["value"].as_str())
-        .ok_or("Weather description empty!")?;
-    let temp = current.temp.as_deref().ok_or("Temperature was not present!")?;
-    tooltip += &format!("{icon} <b>{weather_desc}</b> {temp}°\n");
-    tooltip += &format!("Feels like: {feels}°\n");
-    tooltip += &format!("Wind: {}Km/h\n", current.windspeed);
-    tooltip += &format!("Humidity: {}%\n", current.humidity);
+    // Parse location-local date and hour from the API response
+    let (today_str, now_hour) = {
+        let parts: Vec<&str> = current.time.split('T').collect();
+        let date = parts.first().ok_or("missing date in current.time")?;
+        let hour: u32 = parts
+            .get(1)
+            .and_then(|t| t.split(':').next())
+            .and_then(|h| h.parse().ok())
+            .unwrap_or(0);
+        (date.to_string(), hour)
+    };
+    let today = NaiveDate::parse_from_str(&today_str, "%Y-%m-%d")?;
+    let start_idx = daily.time.iter().position(|d| d == &today_str).unwrap_or(0);
 
-    let today = Local::now().date_naive();
-    let mut forecast = weather.forecasts;
-    forecast.retain(|day| {
-        NaiveDate::parse_from_str(&day.date, "%Y-%m-%d")
-            .map(|date| date >= today)
-            .unwrap_or(false)
-    });
+    // Use the system clock for Today/Tomorrow labels so stale cache data
+    // (e.g. network down for days) doesn't misleadingly label old dates.
+    let system_today = Local::now().date_naive();
 
-    let now = Local::now();
+    for day_i in start_idx..daily.time.len() {
+        let date = NaiveDate::parse_from_str(&daily.time[day_i], "%Y-%m-%d")?;
 
-    for (i, day) in forecast.iter().enumerate() {
         tooltip += "\n<b>";
-        if i == 0 {
+        if date == system_today {
             tooltip += "Today, ";
-        }
-        if i == 1 {
+        } else if date == system_today.succ_opt().unwrap_or(system_today) {
             tooltip += "Tomorrow, ";
         }
-
-        let date = NaiveDate::parse_from_str(&day.date, "%Y-%m-%d")?;
         tooltip += &format!("{}</b>\n", date.format("%d.%m %Y"));
-        tooltip += &format!("⬆️ {max}° ⬇️ {min}° ", max = &day.max, min = &day.min);
 
-        let astronomy = day.astronomy.first().ok_or("No astronomy data!")?;
-        let tt_sunrise = format_day_time(astronomy, "sunrise")?;
-        let tt_sunset = format_day_time(astronomy, "sunset")?;
-        tooltip += &format!("🌅 {tt_sunrise} 🌇 {tt_sunset}\n");
+        let max_temp = daily.temperature_2m_max[day_i].round() as i32;
+        let min_temp = daily.temperature_2m_min[day_i].round() as i32;
+        tooltip += &format!("{} / {}", color_temp(max_temp), color_temp(min_temp));
 
-        for hour in day.hourly.iter() {
-            let hour_time_raw: i32 = hour.time.as_deref().ok_or("Hour time was not present!")?.parse()?;
-            let hour_num = hour_time_raw / 100;
+        let precip_max = daily.precipitation_probability_max[day_i];
+        if precip_max > 0 {
+            tooltip += &format!("  Precip {precip_max}%");
+        }
 
-            if i == 0 && now.hour() >= 2 && (hour_num as u32) < now.hour() - 2 {
+        // Sunrise/sunset - extract THH:MM part
+        let sunrise = daily.sunrise[day_i].split('T').nth(1).unwrap_or("??:??");
+        let sunset = daily.sunset[day_i].split('T').nth(1).unwrap_or("??:??");
+        tooltip += &format!("  {sunrise} - {sunset}\n");
+
+        // Hourly entries for this day
+        let h_start = day_i * 24;
+        let h_end = ((day_i + 1) * 24).min(hourly.time.len());
+
+        for h in h_start..h_end {
+            // Extract hour from time string "YYYY-MM-DDTHH:MM"
+            let hour_str = hourly.time[h].split('T').nth(1).unwrap_or("00:00");
+            let hour_num: u32 = hour_str.split(':').next().unwrap_or("0").parse().unwrap_or(0);
+
+            // Filter to 3-hour intervals
+            if !hour_num.is_multiple_of(3) {
                 continue;
             }
 
-            let hour_desc = hour
-                .desc
-                .first()
-                .and_then(|d| d["value"].as_str())
-                .ok_or("Hour weather description empty!")?;
+            // Skip past hours on today (>2 hours ago)
+            if date == today && now_hour >= 2 && hour_num < now_hour - 2 {
+                continue;
+            }
 
-            tooltip += &format!(
-                "{:02} {} {: >3}° {}",
-                hour_num,
-                get_icon_by_code(hour.code)?,
-                hour.feels,
-                hour_desc,
+            let h_is_day = hourly.is_day[h] != 0;
+            let h_code = hourly.weather_code[h];
+            let h_icon = get_icon(h_code, h_is_day);
+            let h_temp = hourly.apparent_temperature[h].round() as i32;
+            let h_desc = get_description(h_code);
+            let conditions = format_conditions(
+                h_code,
+                hourly.precipitation_probability[h],
+                hourly.cloud_cover[h],
+                hourly.snowfall[h],
+                hourly.visibility[h],
             );
 
-            let raw_hour = to_value(hour)?;
-            tooltip += format!(", {}\n", format_chances(&raw_hour)).as_str();
+            tooltip += &format!(
+                "{:02} {} {} {}{}\n",
+                hour_num,
+                h_icon,
+                color_temp(h_temp),
+                h_desc,
+                conditions
+            );
         }
     }
-    result.insert("tooltip", tooltip);
-    Ok(serde_json::to_string(&result)?)
+
+    Ok(serde_json::to_string(&json!({
+        "text": text,
+        "tooltip": format!("<tt>{tooltip}</tt>"),
+    }))?)
 }
