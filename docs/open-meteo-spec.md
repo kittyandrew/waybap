@@ -19,8 +19,8 @@ GET https://api.open-meteo.com/v1/forecast
 | `latitude` | Decimal degrees (e.g. `50.45`) |
 | `longitude` | Decimal degrees (e.g. `30.52`) |
 | `current` | `temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,relative_humidity_2m,is_day` |
-| `hourly` | `apparent_temperature,weather_code,precipitation_probability,cloud_cover,snowfall,visibility,is_day` |
-| `daily` | `weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset` |
+| `hourly` | `temperature_2m,apparent_temperature,weather_code,precipitation_probability,cloud_cover,snowfall,visibility,is_day` |
+| `daily` | `weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,precipitation_probability_max,sunrise,sunset` |
 | `timezone` | `auto` (returns all times in the location's local timezone -- no chrono timezone conversion needed) |
 | `forecast_days` | `3` (matches old wttr.in default; keeps tooltip manageable) |
 
@@ -29,7 +29,7 @@ Wind speed defaults to km/h, which matches our display format. No explicit `wind
 ### Example request
 
 ```
-https://api.open-meteo.com/v1/forecast?latitude=50.45&longitude=30.52&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,relative_humidity_2m,is_day&hourly=apparent_temperature,weather_code,precipitation_probability,cloud_cover,snowfall,visibility,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset&timezone=auto&forecast_days=3
+https://api.open-meteo.com/v1/forecast?latitude=50.45&longitude=30.52&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,relative_humidity_2m,is_day&hourly=temperature_2m,apparent_temperature,weather_code,precipitation_probability,cloud_cover,snowfall,visibility,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,precipitation_probability_max,sunrise,sunset&timezone=auto&forecast_days=3
 ```
 
 ### Error responses
@@ -142,6 +142,7 @@ struct CurrentWeather {
 #[derive(Deserialize)]
 struct HourlyWeather {
     time: Vec<String>,
+    temperature_2m: Vec<f64>,
     apparent_temperature: Vec<f64>,
     weather_code: Vec<i32>,
     precipitation_probability: Vec<i32>,
@@ -157,6 +158,8 @@ struct DailyWeather {
     weather_code: Vec<i32>,
     temperature_2m_max: Vec<f64>,
     temperature_2m_min: Vec<f64>,
+    apparent_temperature_max: Vec<f64>,
+    apparent_temperature_min: Vec<f64>,
     precipitation_probability_max: Vec<i32>,
     sunrise: Vec<String>,
     sunset: Vec<String>,
@@ -341,7 +344,7 @@ Hourly arrays correspond to daily arrays: day `i` covers hourly indices `i*24` t
 
 ## Temperature display
 
-All temperatures are rounded to the nearest integer for display: `temp.round() as i32`. This keeps the tooltip clean and aligned, matching the existing style.
+All temperatures are rounded to the nearest integer for display: `temp.round() as i32`. Both actual and apparent (feels-like) temperatures are shown everywhere as `actual° (feels°)` -- in the current conditions line, daily header, and hourly entries. This makes it easy to see how wind chill or humidity affects the perceived temperature.
 
 ## Wind direction
 
@@ -353,24 +356,36 @@ Wind: 12 km/h NW
 
 Conversion: normalize with `rem_euclid(360)` (handles negative degrees), then divide into 8 sectors of 45 degrees each. `["N","NE","E","SE","S","SW","W","NW"][(direction.rem_euclid(360) as f64 / 45.0).round() as usize % 8]`.
 
+## Current conditions line
+
+Shows icon, WMO description, actual temperature, and feels-like temperature in parentheses on a single line:
+
+```
+⛅ Partly cloudy 4° (0°)
+Wind: 10 km/h SW
+Humidity: 68%
+```
+
 ## Daily header
 
-Each forecast day shows a header line with max/min temps, precipitation probability, sunrise, and sunset:
+Each forecast day shows a header line with actual (feels-like) max/min temps, precipitation probability, sunrise, and sunset:
 
 ```
 Today, 03.03 2026
-  4° /  1°  Precip 25%  06:37 - 17:42
+8° (4°) / -1° (-4°)  🌧️25%  ☀️06:37 🌙17:42
 ```
 
-- `precipitation_probability_max` from the daily data, shown when > 0.
-- Sunrise/sunset extracted from the ISO 8601 strings (just take the `THH:MM` part).
-- "Today"/"Tomorrow" labels use actual date comparison, not array index.
+- Both actual and apparent (feels-like) temperatures shown as `actual (feels)`.
+- Temperatures are not padded (no `>3`) -- padding is only used in hourly entries for column alignment.
+- `precipitation_probability_max` always shown with 🌧️ emoji (even when 0%).
+- Sunrise ☀️ and sunset 🌙 extracted from the ISO 8601 strings (just the `THH:MM` part).
+- "Today"/"Tomorrow" labels use `Local::now()` for staleness-safe comparison (see Stale cache handling).
 
 ## Conditions line algorithm (per hourly entry)
 
-Each line format: `HH ICON TEMP° DESC[, extras]`
+Each line format: `HH ICON TEMP° (FEELS°) DESC[, extras]`
 
-The base line always includes hour, icon, temperature (rounded), and WMO description. Additional fields are appended conditionally:
+The base line always includes hour, icon, actual temperature (padded, right-aligned), feels-like temperature in parens, and WMO description. Additional fields are appended conditionally:
 
 | Field | Show when | Format |
 |---|---|---|
@@ -383,10 +398,10 @@ Cloud cover is only shown for clear-ish weather (codes 0-2) because for overcast
 
 Example output:
 ```
-12 ☀️   3° Partly cloudy, Precip 15%, Clouds 40%
-15 🌧️   1° Moderate rain, Precip 85%
-18 🌨️  -2° Moderate snowfall, Precip 90%, Snow 1.2cm, Vis 500m
-21 🌙  -4° Clear sky
+12 ☀️   5° (3°) Partly cloudy, Precip 15%, Clouds 40%
+15 🌧️   3° (1°) Moderate rain, Precip 85%
+18 🌨️   1° (-2°) Moderate snowfall, Precip 90%, Snow 1.2cm, Vis 500m
+21 🌙   0° (-4°) Clear sky
 ```
 
 ## Color-coded temperatures
@@ -401,11 +416,24 @@ Use the existing Catppuccin Frappe palette to color temperature values in Pango 
 | 16 to 30 | `#ef9f76` | peach (warm) |
 | >= 31 | `#e78284` | red (hot) |
 
-Applied to temperature values in both the hourly entries and the daily max/min header.
+Two variants in `utils.rs`:
+- `color_temp(temp)` -- no padding, used for bar text, current conditions, and daily header.
+- `color_temp_padded(temp)` -- right-aligned to 3 chars (`{temp: >3}°`), used only in hourly entries for column alignment within `<tt>` monospace.
+
+## Bar text
+
+The bar widget displays the weather icon above the feels-like temperature in a two-line stacked layout:
+
+```
+{icon}
+ {feels_colored}
+```
+
+No leading space before the icon. One leading space before the temperature for margin.
 
 ## Tooltip rendering
 
-The tooltip is wrapped in `<tt>...</tt>` for monospace rendering, matching the crypto and sensors modules. This ensures `{temp: >3}` alignment padding works correctly in Waybar's Pango renderer.
+The tooltip is wrapped in `<tt>...</tt>` for monospace rendering, matching the crypto and sensors modules. The `color_temp_padded` alignment works correctly within this monospace context.
 
 ## Files affected by migration
 
@@ -487,3 +515,6 @@ Tracks issues found during adversarial code review rounds, decisions made, and w
 | Every HTTP request re-parses + re-renders weather data | LOW | Architecture change, not a bug. 10-min data re-rendered per request is negligible | Dismissed (acceptable) |
 | `nvidia-smi` thread + process leak on GPU hang | LOW | Sensors module, out of scope for weather migration. Separate concern | Dismissed (out of scope) |
 | `succ_opt().unwrap_or(today)` dead code on NaiveDate::MAX | LOW | Cannot trigger (year 262143). Harmless, not worth changing | Dismissed (unreachable) |
+| `color_temp` `>3` padding applied everywhere (bar, header, hourly) | -- | Split into `color_temp` (no padding) and `color_temp_padded` (hourly only). Fixes extra spaces in bar text, current conditions, and daily header | Fixed |
+| Current conditions: separate "Feels like" line wastes vertical space | -- | Collapsed into single line: `ICON DESC TEMP° (FEELS°)` | Fixed |
+| Bar text leading space before icon | -- | Removed extra space before icon on first line of bar widget | Fixed |

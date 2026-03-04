@@ -33,6 +33,7 @@ struct CurrentWeather {
 #[derive(Deserialize)]
 struct HourlyWeather {
     time: Vec<String>,
+    temperature_2m: Vec<f64>,
     apparent_temperature: Vec<f64>,
     weather_code: Vec<i32>,
     precipitation_probability: Vec<i32>,
@@ -49,6 +50,8 @@ struct DailyWeather {
     weather_code: Vec<i32>,
     temperature_2m_max: Vec<f64>,
     temperature_2m_min: Vec<f64>,
+    apparent_temperature_max: Vec<f64>,
+    apparent_temperature_min: Vec<f64>,
     precipitation_probability_max: Vec<i32>,
     sunrise: Vec<String>,
     sunset: Vec<String>,
@@ -65,7 +68,7 @@ pub fn parse_data(raw_weather: Value) -> Result<String, Box<dyn std::error::Erro
     let feels = current.apparent_temperature.round() as i32;
     let feels_colored = color_temp(feels);
 
-    let text = format!("<span size=\"small\"> {icon}\n {feels_colored}</span>");
+    let text = format!("<span size=\"small\">{icon}\n {feels_colored}</span>");
 
     let mut tooltip = String::new();
 
@@ -77,8 +80,7 @@ pub fn parse_data(raw_weather: Value) -> Result<String, Box<dyn std::error::Erro
     // Current conditions
     let temp = current.temperature_2m.round() as i32;
     let desc = get_description(current.weather_code);
-    tooltip += &format!("{icon} <b>{desc}</b> {}\n", color_temp(temp));
-    tooltip += &format!("Feels like: {feels_colored}\n");
+    tooltip += &format!("{icon} <b>{desc}</b> {} ({feels_colored})\n", color_temp(temp));
     tooltip += &format!(
         "Wind: {} km/h {}\n",
         current.wind_speed_10m.round() as i32,
@@ -117,17 +119,18 @@ pub fn parse_data(raw_weather: Value) -> Result<String, Box<dyn std::error::Erro
 
         let max_temp = daily.temperature_2m_max[day_i].round() as i32;
         let min_temp = daily.temperature_2m_min[day_i].round() as i32;
-        tooltip += &format!("{} / {}", color_temp(max_temp), color_temp(min_temp));
-
+        let max_feels = daily.apparent_temperature_max[day_i].round() as i32;
+        let min_feels = daily.apparent_temperature_min[day_i].round() as i32;
         let precip_max = daily.precipitation_probability_max[day_i];
-        if precip_max > 0 {
-            tooltip += &format!("  Precip {precip_max}%");
-        }
-
-        // Sunrise/sunset - extract THH:MM part
         let sunrise = daily.sunrise[day_i].split('T').nth(1).unwrap_or("??:??");
         let sunset = daily.sunset[day_i].split('T').nth(1).unwrap_or("??:??");
-        tooltip += &format!("  {sunrise} - {sunset}\n");
+        tooltip += &format!(
+            "{} ({}) / {} ({})  🌧️{precip_max}%  ☀️{sunrise} 🌙{sunset}\n",
+            color_temp(max_temp),
+            color_temp(max_feels),
+            color_temp(min_temp),
+            color_temp(min_feels),
+        );
 
         // Hourly entries for this day
         let h_start = day_i * 24;
@@ -151,7 +154,8 @@ pub fn parse_data(raw_weather: Value) -> Result<String, Box<dyn std::error::Erro
             let h_is_day = hourly.is_day[h] != 0;
             let h_code = hourly.weather_code[h];
             let h_icon = get_icon(h_code, h_is_day);
-            let h_temp = hourly.apparent_temperature[h].round() as i32;
+            let h_temp = hourly.temperature_2m[h].round() as i32;
+            let h_feels = hourly.apparent_temperature[h].round() as i32;
             let h_desc = get_description(h_code);
             let conditions = format_conditions(
                 h_code,
@@ -162,10 +166,11 @@ pub fn parse_data(raw_weather: Value) -> Result<String, Box<dyn std::error::Erro
             );
 
             tooltip += &format!(
-                "{:02} {} {} {}{}\n",
+                "{:02} {} {} ({}) {}{}\n",
                 hour_num,
                 h_icon,
-                color_temp(h_temp),
+                color_temp_padded(h_temp),
+                color_temp(h_feels),
                 h_desc,
                 conditions
             );

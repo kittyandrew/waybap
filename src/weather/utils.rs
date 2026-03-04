@@ -26,16 +26,26 @@ pub fn format_conditions(code: i32, precip: i32, cloud: i32, snow: f64, vis: f64
     }
 }
 
-pub fn color_temp(temp: i32) -> String {
+fn color_temp_fmt(display: String, temp: i32) -> String {
     if temp <= -10 {
-        format!("<span color=\"#949cbb\">{temp: >3}°</span>")
+        format!("<span color=\"#949cbb\">{display}</span>")
     } else if temp <= 0 {
-        format!("<span color=\"#8caaee\">{temp: >3}°</span>")
+        format!("<span color=\"#8caaee\">{display}</span>")
     } else if temp >= 31 {
-        format!("<span color=\"#e78284\">{temp: >3}°</span>")
+        format!("<span color=\"#e78284\">{display}</span>")
     } else if temp >= 16 {
-        format!("<span color=\"#ef9f76\">{temp: >3}°</span>")
+        format!("<span color=\"#ef9f76\">{display}</span>")
     } else {
-        format!("{temp: >3}°")
+        display
     }
+}
+
+/// Color-code a temperature value without alignment padding.
+pub fn color_temp(temp: i32) -> String {
+    color_temp_fmt(format!("{temp}°"), temp)
+}
+
+/// Color-code a temperature value, right-aligned to 3 chars (for monospace column alignment).
+pub fn color_temp_padded(temp: i32) -> String {
+    color_temp_fmt(format!("{temp: >3}°"), temp)
 }
