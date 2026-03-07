@@ -125,7 +125,7 @@ pub fn parse_data(raw_weather: Value) -> Result<String, Box<dyn std::error::Erro
         let sunrise = daily.sunrise[day_i].split('T').nth(1).unwrap_or("??:??");
         let sunset = daily.sunset[day_i].split('T').nth(1).unwrap_or("??:??");
         tooltip += &format!(
-            "{} ({}) / {} ({})  🌧️{precip_max}%  ☀️{sunrise} 🌙{sunset}\n",
+            "🌡️↑{} ({}) 🌡️↓{} ({})  🌧️{precip_max}%  🌅{sunrise} 🌇{sunset}\n",
             color_temp(max_temp),
             color_temp(max_feels),
             color_temp(min_temp),
