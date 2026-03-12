@@ -68,7 +68,7 @@ pub fn parse_data(raw_weather: Value) -> Result<String, Box<dyn std::error::Erro
     let feels = current.apparent_temperature.round() as i32;
     let feels_colored = color_temp(feels);
 
-    let text = format!("<span size=\"small\">{icon}\n {feels_colored}</span>");
+    let text = format!("<span size=\"x-small\">{icon} {feels_colored}</span>");
 
     let mut tooltip = String::new();
 

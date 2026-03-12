@@ -2,8 +2,10 @@ use std::fs::read_to_string;
 use std::io;
 
 use crate::crypto;
+use crate::pango;
 use crate::scheduler::get_cache_fp;
 use crate::sensors;
+use crate::usage;
 use crate::weather;
 use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 
@@ -20,41 +22,30 @@ fn serve_json(request: Request, bytes: &[u8]) -> io::Result<()> {
 fn serve_error_json(request: Request, err_message: String) -> io::Result<()> {
     let err_res = serde_json::json!({
         "text": "⛓️‍💥",
-        "tooltip": err_message
+        "tooltip": pango::escape(&err_message)
     });
     serve_json(request, err_res.to_string().as_bytes())
 }
 
-fn serve_api_weather(request: Request) -> io::Result<()> {
-    let cache_fp = get_cache_fp("weather");
-    let raw_data = read_to_string(cache_fp)?;
-    let raw_data = serde_json::from_str::<serde_json::Value>(&raw_data)?;
-
-    match weather::parse_data(raw_data) {
+/// Shared handler: read cache file → parse JSON → run module parser → serve result.
+/// Consolidates the identical read-cache/parse/serve pattern across all API routes (D18).
+fn serve_cached_api<F>(request: Request, name: &str, parse: F) -> io::Result<()>
+where
+    F: FnOnce(serde_json::Value) -> Result<String, Box<dyn std::error::Error>>,
+{
+    let display = pango::capitalize(name);
+    let cache_fp = get_cache_fp(name);
+    let raw_data = match read_to_string(cache_fp) {
+        Ok(s) => s,
+        Err(err) => return serve_error_json(request, format!("{display} data not available: {err}")),
+    };
+    let raw_data = match serde_json::from_str::<serde_json::Value>(&raw_data) {
+        Ok(v) => v,
+        Err(err) => return serve_error_json(request, format!("{display} cache corrupted: {err}")),
+    };
+    match parse(raw_data) {
         Ok(result) => serve_json(request, result.as_bytes()),
-        Err(err) => serve_error_json(request, format!("Weather service failed: {err}!")),
-    }
-}
-
-fn serve_api_crypto(request: Request) -> io::Result<()> {
-    let cache_fp = get_cache_fp("crypto");
-    let raw_data = read_to_string(cache_fp)?;
-    let raw_data = serde_json::from_str::<serde_json::Value>(&raw_data)?;
-
-    match crypto::parse_data(raw_data) {
-        Ok(result) => serve_json(request, result.as_bytes()),
-        Err(err) => serve_error_json(request, format!("Crypto service failed: {err}!")),
-    }
-}
-
-fn serve_api_sensors(request: Request) -> io::Result<()> {
-    let cache_fp = get_cache_fp("sensors");
-    let raw_data = read_to_string(cache_fp)?;
-    let raw_data = serde_json::from_str::<serde_json::Value>(&raw_data)?;
-
-    match sensors::parse_data(raw_data) {
-        Ok(result) => serve_json(request, result.as_bytes()),
-        Err(err) => serve_error_json(request, format!("Sensors service failed: {err}!")),
+        Err(err) => serve_error_json(request, format!("{display} service failed: {err}!")),
     }
 }
 
@@ -67,9 +58,10 @@ fn serve_request(request: Request) -> io::Result<()> {
     );
 
     match (request.method(), request.url()) {
-        (Method::Get, "/api/weather") => serve_api_weather(request),
-        (Method::Get, "/api/crypto") => serve_api_crypto(request),
-        (Method::Get, "/api/sensors") => serve_api_sensors(request),
+        (Method::Get, "/api/weather") => serve_cached_api(request, "weather", weather::parse_data),
+        (Method::Get, "/api/crypto") => serve_cached_api(request, "crypto", crypto::parse_data),
+        (Method::Get, "/api/sensors") => serve_cached_api(request, "sensors", sensors::parse_data),
+        (Method::Get, "/api/usage") => serve_cached_api(request, "usage", usage::parse_data),
         _ => serve_404(request),
     }
 }

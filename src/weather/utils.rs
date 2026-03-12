@@ -28,13 +28,13 @@ pub fn format_conditions(code: i32, precip: i32, cloud: i32, snow: f64, vis: f64
 
 fn color_temp_fmt(display: String, temp: i32) -> String {
     if temp <= -10 {
-        format!("<span color=\"#949cbb\">{display}</span>")
+        format!("<span foreground=\"#949cbb\">{display}</span>")
     } else if temp <= 0 {
-        format!("<span color=\"#8caaee\">{display}</span>")
+        format!("<span foreground=\"#8caaee\">{display}</span>")
     } else if temp >= 31 {
-        format!("<span color=\"#e78284\">{display}</span>")
+        format!("<span foreground=\"#e78284\">{display}</span>")
     } else if temp >= 16 {
-        format!("<span color=\"#ef9f76\">{display}</span>")
+        format!("<span foreground=\"#ef9f76\">{display}</span>")
     } else {
         display
     }

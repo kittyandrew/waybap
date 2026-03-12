@@ -12,7 +12,7 @@ struct Location {
 
 static LOCATION: OnceLock<Location> = OnceLock::new();
 
-fn try_resolve() -> Option<Location> {
+fn try_resolve(client: &Client) -> Option<Location> {
     // Try env vars first
     let lat_env = std::env::var("WAYBAP_LAT").ok();
     let lon_env = std::env::var("WAYBAP_LON").ok();
@@ -50,18 +50,7 @@ fn try_resolve() -> Option<Location> {
         _ => {}
     }
 
-    // Fallback: IP geolocation
-    let client = match Client::builder()
-        .timeout(Duration::from_secs(3))
-        .user_agent("waybap/0.1.0")
-        .build()
-    {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("Failed to build HTTP client for geolocation: {e}");
-            return None;
-        }
-    };
+    // Fallback: IP geolocation (uses shared client — D16)
     let response = match client.get("https://ipwho.is/").send() {
         Ok(r) => r,
         Err(e) => {
@@ -100,19 +89,34 @@ fn try_resolve() -> Option<Location> {
     })
 }
 
-fn resolve_location() -> Option<&'static Location> {
+fn resolve_location(client: &Client) -> Option<&'static Location> {
     // Return cached location if available
     if let Some(loc) = LOCATION.get() {
         return Some(loc);
     }
     // Try to resolve; only cache on success so failures retry next cycle
-    let loc = try_resolve()?;
+    let loc = try_resolve(client)?;
     let _ = LOCATION.set(loc);
     LOCATION.get()
 }
 
 pub fn query() -> Option<String> {
-    let loc = resolve_location()?;
+    // @NOTE: Single client for all requests in this query cycle (D16).
+    //   Uses 10s timeout for both geolocation and weather API — the geolocation
+    //   endpoint is fast anyway; the previous 3s timeout was defensive, not load-bearing.
+    let client = match Client::builder()
+        .timeout(Duration::from_secs(10))
+        .user_agent("waybap/0.1.0")
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Failed to build HTTP client for weather: {e}");
+            return None;
+        }
+    };
+
+    let loc = resolve_location(&client)?;
 
     let location_name: Option<String> =
         std::env::var("WAYBAP_LOCATION_NAME")
@@ -133,17 +137,6 @@ pub fn query() -> Option<String> {
         lon = loc.lon,
     );
 
-    let client = match Client::builder()
-        .timeout(Duration::from_secs(10))
-        .user_agent("waybap/0.1.0")
-        .build()
-    {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("Failed to build HTTP client for Open-Meteo: {e}");
-            return None;
-        }
-    };
     match client.get(&url).send() {
         Ok(response) => {
             let status = response.status();

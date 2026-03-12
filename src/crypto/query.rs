@@ -2,9 +2,8 @@ use core::time::Duration;
 use reqwest::blocking::Client;
 
 pub fn query() -> Option<String> {
-    let timeout = 5;
     let client = match Client::builder()
-        .timeout(Duration::new(timeout, 0))
+        .timeout(Duration::from_secs(5))
         // We have to use this custom header, because cloudflare blocks default one.
         .user_agent("curl/8.6.0")
         .build()
@@ -33,7 +32,7 @@ pub fn query() -> Option<String> {
             }
         }
         Err(err) => {
-            eprintln!("Request failed: {err} (timeout was {timeout})!");
+            eprintln!("CoinGecko request failed: {err}!");
             None
         }
     }

@@ -52,10 +52,10 @@
         };
       };
       flake = {
-        homeManagerModule = self.homeManagerModules.waydap; # an alias to the default module
+        homeManagerModule = self.homeManagerModules.waybap; # an alias to the default module
         homeManagerModules = rec {
-          waydap = import ./hmModule.nix inputs.self;
-          default = waydap;
+          waybap = import ./hmModule.nix inputs.self;
+          default = waybap;
         };
       };
     };

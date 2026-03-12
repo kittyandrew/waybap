@@ -19,7 +19,7 @@ pub fn parse_data(raw_crypto: Value) -> Result<String, Box<dyn std::error::Error
     // @NOTE: You can't put 'class' on the span here for some reason, but you
     //        can change a bunch of things directly with this special subset
     //        of html (bruh): https://docs.gtk.org/Pango/pango_markup.html
-    let mut text = "<span size=\"large\" color=\"#F7931A\"> 󰠓</span>\n".to_string(); // Using bitcoin orange.
+    let mut text = "<span size=\"large\" foreground=\"#F7931A\"> 󰠓</span>\n".to_string(); // Using bitcoin orange.
     let mut tooltip = "<span size=\"xx-large\">Crypto</span>\n".to_string();
     let max_name_len = coins
         .iter()

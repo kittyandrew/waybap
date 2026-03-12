@@ -1,6 +1,6 @@
 # waybap
 
-A small Rust daemon that provides weather and crypto data for [Waybar](https://github.com/Alexays/Waybar) custom modules. It fetches data from [wttr.in](https://wttr.in) and [CoinGecko](https://www.coingecko.com/) on a schedule, caches it locally, and serves parsed [Pango markup](https://docs.gtk.org/Pango/pango_markup.html) JSON over HTTP.
+A small Rust daemon that provides weather, crypto, hardware sensor, and AI usage data for [Waybar](https://github.com/Alexays/Waybar) custom modules. It fetches data from [Open-Meteo](https://open-meteo.com/), [CoinGecko](https://www.coingecko.com/), Linux hwmon/nvidia-smi, and Claude/Codex usage APIs on a schedule, caches it locally, and serves parsed [Pango markup](https://docs.gtk.org/Pango/pango_markup.html) JSON over HTTP.
 
 ## Usage
 
@@ -14,6 +14,8 @@ waybap serve 127.0.0.1:6963
 # Test a module without starting the daemon
 waybap test weather
 waybap test crypto
+waybap test sensors
+waybap test usage
 
 # Test parsing against cached data (no network)
 waybap test weather --cache
@@ -74,16 +76,32 @@ Point your Waybar custom modules at the API:
   exec = "curl -s http://127.0.0.1:6963/api/crypto";
   return-type = "json";
 };
+"custom/sensors" = {
+  format = "{}";
+  tooltip = true;
+  interval = 1;
+  exec = "curl -s http://127.0.0.1:6963/api/sensors";
+  return-type = "json";
+};
+"custom/usage" = {
+  format = "{}";
+  tooltip = true;
+  interval = 10;
+  exec = "curl -s http://127.0.0.1:6963/api/usage";
+  return-type = "json";
+};
 ```
 
 ## API
 
-| Endpoint | Description |
-|---|---|
-| `GET /api/weather` | Weather data (fetched every 10 min) |
-| `GET /api/crypto` | Top 10 crypto by market cap (fetched every 15 min) |
+| Endpoint | Description | Refresh interval |
+|---|---|---|
+| `GET /api/weather` | Weather forecast (Open-Meteo) | 10 min |
+| `GET /api/crypto` | Top 10 crypto by market cap (CoinGecko) | 15 min |
+| `GET /api/sensors` | Hardware temperatures (hwmon + nvidia-smi) | 1 sec |
+| `GET /api/usage` | Claude + Codex rate-limit usage | 2 min |
 
-Both return `{"text": "...", "tooltip": "..."}` with Pango markup, compatible with Waybar's `return-type = "json"`.
+All endpoints return `{"text": "...", "tooltip": "..."}` with Pango markup, compatible with Waybar's `return-type = "json"`.
 
 ## Building from source
 

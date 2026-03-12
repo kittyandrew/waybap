@@ -74,6 +74,7 @@ Below is a real response for Kyiv (2026-03-03), truncated for readability. All h
 
   "hourly": {
     "time": ["2026-03-03T00:00", "2026-03-03T01:00", "2026-03-03T02:00", "...72 total"],
+    "temperature_2m": [2.1, 1.8, 1.5, "..."],
     "apparent_temperature": [-1.0, -1.3, -1.1, "..."],
     "weather_code": [3, 3, 3, "..."],
     "precipitation_probability": [18, 25, 20, "..."],
@@ -88,6 +89,8 @@ Below is a real response for Kyiv (2026-03-03), truncated for readability. All h
     "weather_code": [3, 3, 3],
     "temperature_2m_max": [4.6, 7.8, 5.4],
     "temperature_2m_min": [1.0, -0.1, -0.4],
+    "apparent_temperature_max": [1.2, 4.3, 2.1],
+    "apparent_temperature_min": [-4.0, -3.5, -4.2],
     "precipitation_probability_max": [25, 45, 10],
     "sunrise": ["2026-03-03T06:37", "2026-03-04T06:35", "2026-03-05T06:33"],
     "sunset": ["2026-03-03T17:42", "2026-03-04T17:43", "2026-03-05T17:45"]
@@ -108,12 +111,12 @@ Below is a real response for Kyiv (2026-03-03), truncated for readability. All h
 ### Key differences from wttr.in
 
 - **Columnar arrays** instead of array-of-objects for hourly/daily data.
-- **Numeric values** (`f64`/`i32`) for all data, not strings. The `serde_aux` crate (`deserialize_number_from_string`) is no longer needed.
-- **ISO 8601 times** (`"2026-03-03T14:00"`) instead of wttr.in's integer-as-string (`"1400"`). The `format_day_time` helper in `utils.rs` needs a full rewrite (no more `%I:%M %p` parsing).
-- **No weather description text** -- must map WMO codes to strings ourselves (see constants section).
+- **Numeric values** (`f64`/`i32`) for all data, not strings. The weather module no longer needs `serde_aux` (crypto still uses it for CoinGecko's string-as-number price field).
+- **ISO 8601 times** (`"2026-03-03T14:00"`) instead of wttr.in's integer-as-string (`"1400"`). Parsed by splitting on `T` -- no chrono timezone conversion needed since `timezone=auto` returns local times.
+- **No weather description text** -- WMO codes mapped to strings in `constants.rs` (see constants section).
 - **No location name** in the response -- resolved separately (see Location section).
-- **24 hourly entries per day** instead of wttr.in's 8 (3-hour intervals). We filter to 3-hour intervals at display time.
-- **No `chanceof*` fields** -- `format_chances` in `utils.rs` is replaced by the new conditions line logic.
+- **24 hourly entries per day** instead of wttr.in's 8 (3-hour intervals). Filtered to 3-hour intervals at display time.
+- **No `chanceof*` fields** -- conditions line in `utils.rs` shows precip%, snow, visibility, and cloud cover conditionally.
 
 ## Deserialization structs (Rust)
 
@@ -309,16 +312,11 @@ HTTPS supported on free tier (unlike ip-api.com which is HTTP-only). No API key 
 
 Check the `"success"` field. On failure, log the message and return `None` from `query()`.
 
-### Request timeouts
+### Request timeout
 
-| Request | Timeout |
-|---|---|
-| ipwho.is (geolocation) | 3 seconds |
-| Open-Meteo (weather) | 10 seconds |
+A single `reqwest::blocking::Client` with a 10-second timeout handles both geolocation and weather requests within the same query cycle. The geolocation endpoint is fast anyway; a separate shorter timeout added complexity without meaningful benefit.
 
-The geolocation timeout is shorter because it's a simpler lookup. The Open-Meteo timeout is longer than the old wttr.in 5s to accommodate occasional slowness.
-
-Both HTTP clients set `User-Agent: waybap/0.1.0` for API hygiene.
+The client sets `User-Agent: waybap/0.1.0` for API hygiene.
 
 ## Hourly display
 
@@ -372,13 +370,14 @@ Each forecast day shows a header line with actual (feels-like) max/min temps, pr
 
 ```
 Today, 03.03 2026
-8° (4°) / -1° (-4°)  🌧️25%  ☀️06:37 🌙17:42
+🌡️↑4° (1°) 🌡️↓-1° (-4°)  🌧️25%  🌅06:37 🌇17:42
 ```
 
+- 🌡️↑ / 🌡️↓ thermometer emojis with arrows for max/min temperatures.
 - Both actual and apparent (feels-like) temperatures shown as `actual (feels)`.
-- Temperatures are not padded (no `>3`) -- padding is only used in hourly entries for column alignment.
+- Temperatures are color-coded and not padded -- padding is only used in hourly entries for column alignment.
 - `precipitation_probability_max` always shown with 🌧️ emoji (even when 0%).
-- Sunrise ☀️ and sunset 🌙 extracted from the ISO 8601 strings (just the `THH:MM` part).
+- 🌅 sunrise and 🌇 sunset extracted from the ISO 8601 strings (just the `THH:MM` part).
 - "Today"/"Tomorrow" labels use `Local::now()` for staleness-safe comparison (see Stale cache handling).
 
 ## Conditions line algorithm (per hourly entry)
@@ -398,7 +397,7 @@ Cloud cover is only shown for clear-ish weather (codes 0-2) because for overcast
 
 Example output:
 ```
-12 ☀️   5° (3°) Partly cloudy, Precip 15%, Clouds 40%
+12 ⛅   5° (3°) Partly cloudy, Precip 15%, Clouds 40%
 15 🌧️   3° (1°) Moderate rain, Precip 85%
 18 🌨️   1° (-2°) Moderate snowfall, Precip 90%, Snow 1.2cm, Vis 500m
 21 🌙   0° (-4°) Clear sky
@@ -422,29 +421,26 @@ Two variants in `utils.rs`:
 
 ## Bar text
 
-The bar widget displays the weather icon above the feels-like temperature in a two-line stacked layout:
+The bar widget displays the weather icon and feels-like temperature on a single line at `x-small` size:
 
 ```
-{icon}
- {feels_colored}
+{icon} {feels_colored}
 ```
-
-No leading space before the icon. One leading space before the temperature for margin.
 
 ## Tooltip rendering
 
 The tooltip is wrapped in `<tt>...</tt>` for monospace rendering, matching the crypto and sensors modules. The `color_temp_padded` alignment works correctly within this monospace context.
 
-## Files affected by migration
+## Files changed
 
-| File | Change |
+| File | What changed |
 |---|---|
-| `weather/query.rs` | Full rewrite: geolocation + Open-Meteo requests, JSON wrapping, new timeouts |
-| `weather/parsing.rs` | Full rewrite: new deserialization structs (columnar), new tooltip formatting, temperature rounding, color coding |
-| `weather/constants.rs` | Replace entire weather code table (62 WWO entries -> 28 WMO entries + descriptions). New `get_icon(code, is_day)` and `get_description(code)` functions. Add unknown-code fallback. |
-| `weather/utils.rs` | Full rewrite: remove `format_day_time` (no more `%I:%M %p` parsing), remove `format_chances` and `CHANCES` array, add wind direction helper, add conditions line builder |
-| `weather/mod.rs` | Update doc comment (remove wttr.in reference) |
-| `Cargo.toml` | Remove `serde_aux` if no longer used elsewhere |
+| `weather/query.rs` | Geolocation + Open-Meteo requests, JSON wrapping, shared client with 10s timeout |
+| `weather/parsing.rs` | Deserialization structs for columnar format, tooltip formatting, temperature color coding |
+| `weather/constants.rs` | WMO weather code table (28 entries + descriptions), `get_icon(code, is_day)` and `get_description(code)` with binary search |
+| `weather/utils.rs` | Wind direction helper, conditions line builder, `color_temp`/`color_temp_padded` formatting |
+| `weather/mod.rs` | Doc comment describing Open-Meteo data source |
+| `Cargo.toml` | `serde_aux` retained — still used by `crypto/parsing.rs` for `deserialize_number_from_string` |
 
 ## Design decisions log
 
@@ -510,7 +506,7 @@ Tracks issues found during adversarial code review rounds, decisions made, and w
 | Partial `WAYBAP_LAT`/`WAYBAP_LON` silently falls through to IP geolocation | MEDIUM | Add `return None` after warning -- fail fast since user intended manual config | Fixed |
 | `crypto/query.rs` `.expect()` on `Client::builder().build()` panics + aborts daemon | MEDIUM | Replace with `match` + error log + `return None`, consistent with weather module | Fixed |
 | Stale cache labels: `has_today=false` dead code, old dates labeled "Today" | LOW | Use `Local::now().date_naive()` for labels (not hour filtering). Removed dead `has_today` code path | Fixed |
-| Bar `text` field contains `\n` newline (two-line stacked display) | MEDIUM | Intentional stacked layout (icon above, temp below). No change | Dismissed (intentional) |
+| Bar `text` field contains `\n` newline (two-line stacked display) | MEDIUM | Changed to single-line `x-small` layout: `{icon} {feels_colored}` | Fixed |
 | `{temp: >3}` alignment breaks for temps below -99 | LOW | Earth temps never reach -100C even with wind chill. Theoretical edge case | Dismissed (unrealistic) |
 | Every HTTP request re-parses + re-renders weather data | LOW | Architecture change, not a bug. 10-min data re-rendered per request is negligible | Dismissed (acceptable) |
 | `nvidia-smi` thread + process leak on GPU hang | LOW | Sensors module, out of scope for weather migration. Separate concern | Dismissed (out of scope) |
