@@ -16,13 +16,15 @@ pub fn format_conditions(code: i32, precip: i32, cloud: i32, snow: f64, vis: f64
     if vis < 1000.0 {
         parts.push(format!("Vis {}m", vis.round() as i32));
     }
-    if (code == 0 || code == 1 || code == 2) && cloud > 0 {
-        parts.push(format!("Clouds {cloud}%"));
-    }
-    if parts.is_empty() {
-        String::new()
+    let cloud_suffix = if (code == 0 || code == 1 || code == 2) && cloud > 0 {
+        format!(" (☁️ {cloud}%)")
     } else {
-        format!(", {}", parts.join(", "))
+        String::new()
+    };
+    if parts.is_empty() {
+        cloud_suffix
+    } else {
+        format!(", {}{cloud_suffix}", parts.join(", "))
     }
 }
 

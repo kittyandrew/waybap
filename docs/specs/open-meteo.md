@@ -342,7 +342,7 @@ Hourly arrays correspond to daily arrays: day `i` covers hourly indices `i*24` t
 
 ## Temperature display
 
-All temperatures are rounded to the nearest integer for display: `temp.round() as i32`. Both actual and apparent (feels-like) temperatures are shown everywhere as `actual° (feels°)` -- in the current conditions line, daily header, and hourly entries. This makes it easy to see how wind chill or humidity affects the perceived temperature.
+All temperatures are rounded to the nearest integer for display: `temp.round() as i32`. Both actual and apparent (feels-like) temperatures are shown everywhere as `actual°(feels°)` -- no space before the parenthesized feels-like value. This applies to the current conditions line, daily header, and hourly entries.
 
 ## Wind direction
 
@@ -359,7 +359,7 @@ Conversion: normalize with `rem_euclid(360)` (handles negative degrees), then di
 Shows icon, WMO description, actual temperature, and feels-like temperature in parentheses on a single line:
 
 ```
-⛅ Partly cloudy 4° (0°)
+⛅ Partly cloudy 4°(0°)
 Wind: 10 km/h SW
 Humidity: 68%
 ```
@@ -369,12 +369,13 @@ Humidity: 68%
 Each forecast day shows a header line with actual (feels-like) max/min temps, precipitation probability, sunrise, and sunset:
 
 ```
-Today, 03.03 2026
-🌡️↑4° (1°) 🌡️↓-1° (-4°)  🌧️25%  🌅06:37 🌇17:42
+Today, 3 March 2026
+🌡️↑ 4°(1°) 🌡️↓ -1°(-4°)  🌧️25%  🌅06:37 🌇17:42
 ```
 
-- 🌡️↑ / 🌡️↓ thermometer emojis with arrows for max/min temperatures.
-- Both actual and apparent (feels-like) temperatures shown as `actual (feels)`.
+- 🌡️↑ / 🌡️↓ thermometer emojis with arrows, space before temperature value.
+- Both actual and apparent (feels-like) temperatures shown as `actual°(feels°)`.
+- Date format: `%-d %B %Y` (e.g. `3 March 2026`, no leading zero on day).
 - Temperatures are color-coded and not padded -- padding is only used in hourly entries for column alignment.
 - `precipitation_probability_max` always shown with 🌧️ emoji (even when 0%).
 - 🌅 sunrise and 🌇 sunset extracted from the ISO 8601 strings (just the `THH:MM` part).
@@ -382,25 +383,25 @@ Today, 03.03 2026
 
 ## Conditions line algorithm (per hourly entry)
 
-Each line format: `HH ICON TEMP° (FEELS°) DESC[, extras]`
+Each line format: `HH ICON TEMP°(FEELS°) DESC[, extras][ (☁️ X%)]`
 
-The base line always includes hour, icon, actual temperature (padded, right-aligned), feels-like temperature in parens, and WMO description. Additional fields are appended conditionally:
+The base line always includes hour, icon, actual temperature (padded, right-aligned), feels-like temperature in parens (no space before paren), and WMO description. Additional fields are appended conditionally:
 
 | Field | Show when | Format |
 |---|---|---|
-| `precipitation_probability` | > 0 | `Precip X%` |
-| `snowfall` | > 0.0 | `Snow X.Xcm` |
-| `visibility` | < 1000m | `Vis Xm` (rounded to integer) |
-| `cloud_cover` | weather_code is 0, 1, or 2 (clear/mainly-clear/partly-cloudy) | `Clouds X%` |
+| `precipitation_probability` | > 0 | `Precip X%` (comma-separated with other extras) |
+| `snowfall` | > 0.0 | `Snow X.Xcm` (comma-separated with other extras) |
+| `visibility` | < 1000m | `Vis Xm` (rounded to integer, comma-separated) |
+| `cloud_cover` | weather_code is 0, 1, or 2 (clear/mainly-clear/partly-cloudy) | `(☁️ X%)` appended at end |
 
-Cloud cover is only shown for clear-ish weather (codes 0-2) because for overcast/rain/snow/fog the description already implies cloudiness.
+Cloud cover is only shown for clear-ish weather (codes 0-2) because for overcast/rain/snow/fog the description already implies cloudiness. It is shown in parentheses with a cloud emoji, separate from the comma-separated extras.
 
 Example output:
 ```
-12 ⛅   5° (3°) Partly cloudy, Precip 15%, Clouds 40%
-15 🌧️   3° (1°) Moderate rain, Precip 85%
-18 🌨️   1° (-2°) Moderate snowfall, Precip 90%, Snow 1.2cm, Vis 500m
-21 🌙   0° (-4°) Clear sky
+12 ⛅   5°(3°) Partly cloudy, Precip 15% (☁️ 40%)
+15 🌧️   3°(1°) Moderate rain, Precip 85%
+18 🌨️   1°(-2°) Moderate snowfall, Precip 90%, Snow 1.2cm, Vis 500m
+21 🌙   0°(-4°) Clear sky
 ```
 
 ## Color-coded temperatures
@@ -421,11 +422,23 @@ Two variants in `utils.rs`:
 
 ## Bar text
 
-The bar widget displays the weather icon and feels-like temperature on a single line at `x-small` size:
+The bar widget displays a color-coded Nerd Font weather glyph and feels-like temperature on a single line at `x-small` size. Nerd Font glyphs are used instead of emoji because emoji have built-in horizontal padding that creates excessive spacing at small sizes.
 
-```
-{icon} {feels_colored}
-```
+The `bar_icon()` and `bar_icon_color()` functions in `parsing.rs` map WMO codes to Nerd Font glyphs and Catppuccin Frappe colors respectively. The tooltip still uses emoji via `get_icon()` in `constants.rs`.
+
+| Condition | Glyph | Color |
+|---|---|---|
+| Clear sky (day) | `󰖙` nf-md-weather_sunny | `#e5c890` yellow |
+| Mainly/partly cloudy | `󰖕` nf-md-weather_partly_cloudy | `#e5c890` yellow |
+| Overcast | `󰖐` nf-md-weather_cloudy | `#949cbb` muted |
+| Fog | `󰖑` nf-md-weather_fog | `#949cbb` muted |
+| Rain/drizzle | `󰖗` nf-md-weather_rainy | `#8caaee` blue |
+| Freezing rain | `󰖘` nf-md-weather_snowy_rainy | `#8caaee` blue |
+| Snow | `󰖘` nf-md-weather_snowy | `#babbf1` lavender |
+| Showers (rain) | `󰖖` nf-md-weather_pouring | `#8caaee` blue |
+| Showers (snow) | `󰼶` nf-md-weather_snowy_heavy | `#babbf1` lavender |
+| Thunderstorm | `󰖓` nf-md-weather_lightning | `#ef9f76` peach |
+| Night (clear) | `󰼶` nf-md-weather_night | `#949cbb` muted |
 
 ## Tooltip rendering
 

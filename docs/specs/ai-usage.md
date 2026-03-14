@@ -472,7 +472,7 @@ All touchpoints in existing files that were modified when adding the usage modul
 
 ### Bar text
 
-Vertical bar layout — one line per provider, stacked. Claude on top, Codex below.
+Vertical bar layout — one line per provider, stacked in `x-small` size. Claude on top, Codex below.
 Each line: provider initial + color-coded weekly percentage.
 
 ```
