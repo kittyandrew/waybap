@@ -473,7 +473,7 @@ All touchpoints in existing files that were modified when adding the usage modul
 ### Bar text
 
 Vertical bar layout — one line per provider, stacked. Claude on top, Codex below.
-Each line: provider initial + color-coded session percentage.
+Each line: provider initial + color-coded weekly percentage.
 
 ```
 C 78
@@ -481,8 +481,8 @@ X 25
 ```
 
 - `C` / `X` prefixes identify the provider at a glance.
-- Number is session `used_percent`, clamped to 0-100 (no `%` suffix — obvious from context,
-  saves width). See D9 for rationale on used% vs remaining%.
+- Number is weekly `used_percent`, clamped to 0-100 (no `%` suffix — obvious from context,
+  saves width). See D9 for rationale on used% vs remaining%, D15 for why weekly over session.
 - Color by remaining percentage (100 - used), applied independently per provider:
   - `>50%` remaining: `#a6d189` (green) — plenty of headroom
   - `25-50%` remaining: `#e5c890` (yellow) — getting there
@@ -856,17 +856,16 @@ provider to `null`, losing its last-known-good data for up to 120 seconds. This 
 pattern vs. existing single-source modules (weather, crypto, sensors) which never face partial
 failure. The read-merge-write adds ~5 lines of code and prevents silent data loss.
 
-### D15: Bar text shows session window only
+### D15: Bar text shows weekly window
 
-**Decision:** Bar text number is the rate (5h) window `used_percent`. Weekly and model-specific
-windows are visible only in the tooltip.
+**Decision:** Bar text number is the weekly (7-day) window `used_percent`. Session and
+model-specific windows are visible only in the tooltip.
 
-**Context:** The session window is the most immediately actionable constraint — it resets every
-5 hours and is what causes the "wait for reset" experience. A nearly-full weekly window is
-important but less urgent (resets in days, not hours). Showing `max(session, weekly)` was
-considered but would mix two different time scales in one number, requiring the user to hover
-anyway to understand which window is constrained. The color coding on the session percentage
-provides sufficient urgency signal for the common case.
+**Context:** Originally showed the session (5h) window as the "most immediately actionable"
+constraint, but in practice the weekly window is more useful at a glance — it represents the
+hard budget that actually matters over time. Session limits reset every 5 hours and rarely
+cause sustained concern, while a nearly-full weekly window means real constraint for the rest
+of the week. The weekly number gives a better ambient signal of overall capacity.
 
 ### D16: Shared reqwest Client + existing module refactor
 

@@ -361,12 +361,12 @@ fn format_provider_section(name: &str, usage: &ProviderUsage) -> String {
 }
 
 fn format_bar_line(prefix: &str, usage: &ProviderUsage) -> String {
-    let session = match usage.session.as_ref() {
-        Some(s) => s,
-        // Active provider but no session data — show muted placeholder
+    let weekly = match usage.weekly.as_ref() {
+        Some(w) => w,
+        // Active provider but no weekly data — show muted placeholder
         None => return format!("<span foreground=\"#949cbb\">{prefix} —</span>"),
     };
-    let clamped = session.used_percent.clamp(0.0, 100.0);
+    let clamped = weekly.used_percent.clamp(0.0, 100.0);
     let pct = clamped.round() as i64;
     if usage.token_expired {
         // Muted color with ? suffix — signals data staleness (D17)
@@ -424,7 +424,7 @@ pub fn parse_data(data: Value) -> Result<String, Box<dyn std::error::Error>> {
         // Both providers disabled — single muted icon
         "<span foreground=\"#949cbb\">\u{F0EC0}</span>".to_string() // 󰻀 nf-md-head_cog
     } else {
-        bar_lines.join("\n")
+        format!("<span size=\"x-small\">{}</span>", bar_lines.join("\n"))
     };
 
     // Tooltip
