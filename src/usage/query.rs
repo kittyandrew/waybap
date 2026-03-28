@@ -230,7 +230,7 @@ fn fetch_provider(
 
 pub fn query() -> Option<String> {
     let client = match Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(10))
         .user_agent("waybap/0.1.0")
         .build()
     {

@@ -7,6 +7,7 @@ Custom data provider for Waybar/Hyprland. A small Rust daemon that fetches weath
 ```
 src/
   main.rs              CLI entry point (serve, test subcommands; hand-rolled arg parsing)
+  catppuccin.rs        Catppuccin Frappe color palette constants (single source of truth)
   pango.rs             Shared Pango/XML escape, capitalize, and meter bar utilities
   server.rs            tiny_http server, routes: /api/weather, /api/crypto, /api/sensors, /api/usage
   scheduler.rs         Job scheduler: periodic fetch with retries, atomic cache writes (tmp + rename)
@@ -30,14 +31,15 @@ src/
     parsing.rs         Format usage data as color-coded Pango markup with meter bars
 ```
 
-## Docs
+## Specs
 
-**Important**: Always keep this index up to date when creating, renaming, or deleting files in `docs/`. Every doc file must be listed here.
+**Important**: Always keep this index up to date when creating, renaming, or deleting files in `docs/`.
+
+Single Allium specification covers the full system. Read `docs/specs/waybap.allium` before making changes to scheduling, formatting, color coding, or API behavior — it captures the design decisions and constraints. Run `allium check docs/specs/waybap.allium` to validate.
 
 ```
 docs/specs/
-  open-meteo.md   Open-Meteo API integration spec: endpoints, response format, WMO codes, design decisions
-  ai-usage.md     AI usage tracking spec: Claude + Codex rate-limit windows via OAuth, based on CodexBar insights
+  waybap.allium   Full system spec: scheduler, server, all 4 data modules, display formatting
 ```
 
 ## Build & test
@@ -53,7 +55,7 @@ docs/specs/
 - No external arg parser -- CLI is hand-rolled in main.rs.
 - Output is Pango markup JSON (`{"text": "...", "tooltip": "..."}`) consumed by Waybar.
 - Error handling: parsing functions return `Result<String, Box<dyn std::error::Error>>`, query functions return `Option<String>`. Prefer `?` and `.ok_or()` over `unwrap()`.
-- Colors: `#e78284` (red/negative/hot), `#a6d189` (green/positive), `#949cbb` (muted/N/A/extreme-cold), `#8caaee` (blue/cold), `#F7931A` (bitcoin orange), `#e5c890` (yellow/warm), `#ef9f76` (peach/hot/warm). These are Catppuccin Frappe palette colors.
+- Colors: Catppuccin Frappe palette, centralized in `src/catppuccin.rs`. All modules use `crate::catppuccin::*` constants — never inline hex strings.
 - Cache files live at `~/.cache/waybap/{name}.json`, written atomically (tmp + rename).
 - Scheduler threads are per-job, no shared state needed.
 - Each data module exposes two public functions: `query() -> Option<String>` and `parse_data(Value) -> Result<String, ...>`. See `mod.rs` in any module for the pattern.

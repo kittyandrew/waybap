@@ -2,6 +2,7 @@ use std::env;
 use std::fs::read_to_string;
 use std::process::ExitCode;
 
+mod catppuccin;
 mod crypto;
 mod pango;
 mod scheduler;

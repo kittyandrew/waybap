@@ -1,6 +1,7 @@
 use serde_json::{json, value::from_value, Value};
 
 use super::SensorData;
+use crate::catppuccin;
 
 // Sensor category determines temperature color thresholds
 #[derive(Clone, Copy)]
@@ -11,53 +12,21 @@ enum SensorKind {
     Motherboard, // Mixed sensors, generous thresholds
 }
 
-// Catppuccin Frappe palette for temperature color coding
 fn temp_color(temp: f64, kind: SensorKind) -> &'static str {
-    match kind {
-        SensorKind::CpuGpu => {
-            if temp >= 85.0 {
-                "#e78284" // Red - critical
-            } else if temp >= 70.0 {
-                "#ef9f76" // Peach - hot
-            } else if temp >= 50.0 {
-                "#e5c890" // Yellow - warm
-            } else {
-                "#a6d189" // Green - cool
-            }
-        }
-        SensorKind::Nvme => {
-            if temp >= 70.0 {
-                "#e78284" // Red - throttling
-            } else if temp >= 55.0 {
-                "#ef9f76" // Peach - hot
-            } else if temp >= 40.0 {
-                "#e5c890" // Yellow - warm
-            } else {
-                "#a6d189" // Green - cool
-            }
-        }
-        SensorKind::Ram => {
-            if temp >= 60.0 {
-                "#e78284" // Red - critical for DDR5
-            } else if temp >= 50.0 {
-                "#ef9f76" // Peach - hot
-            } else if temp >= 40.0 {
-                "#e5c890" // Yellow - warm
-            } else {
-                "#a6d189" // Green - cool
-            }
-        }
-        SensorKind::Motherboard => {
-            if temp >= 85.0 {
-                "#e78284" // Red - critical
-            } else if temp >= 70.0 {
-                "#ef9f76" // Peach - hot
-            } else if temp >= 50.0 {
-                "#e5c890" // Yellow - warm
-            } else {
-                "#a6d189" // Green - cool
-            }
-        }
+    let (warm, hot, critical) = match kind {
+        SensorKind::CpuGpu => (50.0, 70.0, 85.0),
+        SensorKind::Nvme => (40.0, 55.0, 70.0),
+        SensorKind::Ram => (40.0, 50.0, 60.0),
+        SensorKind::Motherboard => (50.0, 70.0, 85.0),
+    };
+    if temp >= critical {
+        catppuccin::RED
+    } else if temp >= hot {
+        catppuccin::PEACH
+    } else if temp >= warm {
+        catppuccin::YELLOW
+    } else {
+        catppuccin::GREEN
     }
 }
 
@@ -126,7 +95,10 @@ pub fn parse_data(raw_data: Value) -> Result<String, Box<dyn std::error::Error>>
             let color = temp_color(t, SensorKind::CpuGpu);
             format!("<span size=\"x-small\">\u{F050F} <span foreground=\"{color}\">{t:.0}°</span></span>")
         }
-        None => "<span size=\"x-small\">\u{F050F} <span foreground=\"#949cbb\">--°</span></span>".to_string(),
+        None => format!(
+            "<span size=\"x-small\">\u{F050F} <span foreground=\"{}\">--°</span></span>",
+            catppuccin::MUTED
+        ),
     };
 
     // Tooltip: rich sensor dashboard

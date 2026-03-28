@@ -1,0 +1,341 @@
+-- allium: 3
+-- waybap.allium
+
+-- Waybap: custom data provider for Waybar/Hyprland.
+-- Periodically fetches weather, crypto, sensor, and AI usage data,
+-- caches to disk, and serves Pango-markup JSON for Waybar custom modules.
+--
+-- Scope: Full system
+-- Includes: Scheduler, HTTP server, all 4 data modules, display formatting
+-- Excludes:
+--   - Rust implementation (serde, reqwest, tiny_http, threads)
+--   - Pango XML escape mechanics
+--   - File I/O atomicity details (temp file + rename)
+--
+-- Data sources:
+--   Weather:  Open-Meteo API (api.open-meteo.com/v1/forecast, no key, 600/min)
+--   Crypto:   CoinGecko API (top 10 by market cap, USD, 24h change)
+--   Sensors:  /sys/class/hwmon + nvidia-smi (temps -40..150°C, rejects 0.0)
+--   Usage:    Claude OAuth (api.anthropic.com/api/oauth/usage, ~/.claude/.credentials.json)
+--             Codex OAuth (chatgpt.com/backend-api/wham/usage, ~/.codex/auth.json)
+--             Status pages (status.anthropic.com, status.openai.com)
+--   Location: WAYBAP_LAT/LON env vars, fallback ipwho.is geolocation
+--
+-- Output contract (Waybar custom module JSON):
+--   {"text": "<pango markup>", "tooltip": "<tt>pango markup</tt>"}
+--
+-- Color palette: Catppuccin Frappe
+--   Red:       #e78284 (negative, hot, critical, <10% remaining)
+--   Green:     #a6d189 (positive, cool, healthy, >50% remaining)
+--   Muted:     #949cbb (N/A, night, overcast, extreme cold, disabled)
+--   Blue:      #8caaee (cold, rain, drizzle, showers)
+--   Yellow:    #e5c890 (warm, sun, partly cloudy, 25-50% remaining)
+--   Peach:     #ef9f76 (hot, thunderstorm, 10-25% remaining)
+--   Lavender:  #babbf1 (snow)
+--   Bitcoin:   #F7931A (BTC icon)
+--
+-- Sensor temperature thresholds (°C) per kind:
+--   cpu_gpu:     warm 50, hot 70, critical 85
+--   nvme:        warm 40, hot 55, critical 70
+--   ram:         warm 40, hot 50, critical 60
+--   motherboard: warm 50, hot 70, critical 85
+--   Below warm: green. warm: yellow. hot: peach. critical+: red.
+
+------------------------------------------------------------
+-- Config
+------------------------------------------------------------
+
+config {
+    -- Scheduling intervals
+    weather_interval: Duration = 10.minutes
+    crypto_interval: Duration = 15.minutes
+    sensors_interval: Duration = 1.second
+    usage_interval: Duration = 2.minutes
+    max_retries: Integer = 3
+
+    -- Server
+    default_address: String = "127.0.0.1:6969"
+
+    -- Temperature color thresholds (°C, weather module)
+    temp_extreme_cold: Integer = -10
+    temp_cold: Integer = 0
+    temp_warm: Integer = 16
+    temp_hot: Integer = 31
+
+    -- Usage capacity thresholds (remaining %)
+    usage_ok: Integer = 50
+    usage_caution: Integer = 25
+    usage_warning: Integer = 10
+
+    -- Cache freshness thresholds (seconds)
+    cache_fresh: Integer = 240
+    cache_stale: Integer = 600
+
+    -- Nvidia-smi result cache (seconds)
+    nvidia_cache_ttl: Integer = 10
+
+    -- HTTP request timeout (weather, crypto, usage — sensors reads local sysfs)
+    http_timeout: Duration = 10.seconds
+}
+
+------------------------------------------------------------
+-- Entities
+------------------------------------------------------------
+
+entity DataModule {
+    name: weather | crypto | sensors | usage
+    interval: Duration
+    last_fetched: Timestamp?
+
+    is_due: last_fetched = null or last_fetched + interval <= now
+}
+
+------------------------------------------------------------
+-- Rules
+------------------------------------------------------------
+
+-- § Scheduling and caching
+
+rule FetchModuleData {
+    when: module: DataModule.is_due
+
+    ensures: module.last_fetched = now
+    ensures: DataRefreshed(module: module.name, interval: module.interval)
+
+    @guidance
+        -- Runs the module's query function. On success, writes result
+        -- to ~/.cache/waybap/{module.name}.json atomically (temp file + rename).
+        -- On failure, retries up to config.max_retries times with
+        -- linear backoff (1s, 2s, 3s).
+}
+
+-- § Weather formatting
+-- Location resolution: resolved once at first weather query, cached in memory (OnceLock).
+-- Failures are NOT cached — allows retries on transient geolocation errors.
+-- Coordinates: WAYBAP_LAT + WAYBAP_LON env vars. Fallback: ipwho.is geolocation.
+-- Display name: WAYBAP_LOCATION_NAME env var, or "city, country" from geolocation.
+
+rule FormatWeather {
+    when: ServeWeather(cached_data)
+
+    ensures: WidgetServed(
+        module: weather,
+        text: format_weather_bar(cached_data),
+        tooltip: format_weather_tooltip(cached_data)
+    )
+
+    @guidance
+        -- Bar text (x-small):
+        --   Nerd Font weather glyph colored by WMO category, space, feels-like temp colored by range.
+        --   Nerd Font glyphs avoid emoji horizontal padding issues at small sizes.
+        --
+        -- Bar glyph mapping (WMO code → Nerd Font icon):
+        --   0 clear (day):       󰖙 nf-md-weather_sunny
+        --   0-1 clear (night):   󰖔 nf-md-weather_night
+        --   1-2 partly cloudy:   󰖕 nf-md-weather_partly_cloudy
+        --   3 overcast:          󰖐 nf-md-weather_cloudy
+        --   45,48 fog:           󰖑 nf-md-weather_fog
+        --   51-57 drizzle:       󰖗 nf-md-weather_rainy
+        --   61-65 rain:          󰖗 nf-md-weather_rainy
+        --   66-67 freezing rain: 󰙿 nf-md-weather_snowy_rainy
+        --   71-77 snow:          󰖘 nf-md-weather_snowy
+        --   80-82 showers:       󰖖 nf-md-weather_pouring
+        --   85-86 snow showers:  󰼶 nf-md-weather_snowy_heavy
+        --   95-99 thunderstorm:  󰖓 nf-md-weather_lightning
+        --
+        -- Bar glyph color (WMO code → Catppuccin color):
+        --   Night (code 0-1, !is_day): muted
+        --   0 clear day:               yellow
+        --   1-2 partly cloudy:         yellow
+        --   3 overcast:                muted
+        --   45,48 fog:                 muted
+        --   51-57 drizzle:              blue
+        --   61-67 rain/freezing rain:  blue
+        --   71-77 snow:                lavender
+        --   80-82 showers:             blue
+        --   85-86 snow showers:        lavender
+        --   95-99 thunderstorm:        peach
+        --
+        -- Temperature color (°C):
+        --   ≤ -10: muted  |  -9 to 0: blue  |  1 to 15: default/white
+        --   16 to 30: peach  |  ≥ 31: red
+        --
+        -- Tooltip layout:
+        --   Location header (large span)
+        --   Current: emoji description actual°(feels°)
+        --   Wind: speed km/h direction  |  Humidity: %
+        --   Per-day sections (3 days):
+        --     Header: "Today/Tomorrow, " prefix + "%-d %B %Y" date format
+        --     Daily summary: 🌡️↑ max°(feels°) 🌡️↓ min°(feels°)  🌧️precip%  🌅sunrise 🌇sunset
+        --     Hourly rows at 3-hour intervals, skip past hours (>2h ago on today):
+        --       HH emoji padded_temp°(feels°) description conditions
+        --     Conditions line: precip%, snowfall, visibility, cloud cover as (☁️ X%)
+        --   No space between actual temp and feels-like parenthetical.
+        --   Space after 🌡️↑ and 🌡️↓ thermometer arrows.
+        --   Tooltip emoji use standard emoji (not Nerd Font) for full-size rendering.
+        --   "Today/Tomorrow" labels use system clock, not API time, to avoid
+        --   misleading labels when serving stale cached data.
+}
+
+-- § Crypto formatting
+
+rule FormatCrypto {
+    when: ServeCrypto(cached_data)
+
+    ensures: WidgetServed(
+        module: crypto,
+        text: format_crypto_bar(cached_data),
+        tooltip: format_crypto_tooltip(cached_data)
+    )
+
+    @guidance
+        -- Bar text:
+        --   Line 1: Bitcoin logo 󰠓 (large, Bitcoin orange #F7931A)
+        --   Line 2: BTC price in thousands (e.g. "87.3k") colored by 24h change
+        --     green if positive, red if negative (x-small)
+        --   First coin in data must be Bitcoin.
+        --
+        -- Tooltip:
+        --   "Crypto" header (xx-large)
+        --   Per coin (top 10 by market cap):
+        --     name: $price  change% (green if positive, red if negative, muted if N/A)
+        --   Prices padded for alignment in monospace.
+}
+
+-- § Sensors formatting
+
+rule FormatSensors {
+    when: ServeSensors(cached_data)
+
+    ensures: WidgetServed(
+        module: sensors,
+        text: format_sensors_bar(cached_data),
+        tooltip: format_sensors_tooltip(cached_data)
+    )
+
+    @guidance
+        -- Bar text (x-small):
+        --   Thermometer icon 󰔏 + CPU temp colored by cpu_gpu thresholds.
+        --   CPU source: k10temp Tctl (AMD) or first coretemp reading (Intel).
+        --   Fallback if no CPU found: "--°" in muted.
+        --
+        -- Tooltip:
+        --   "Hardware Sensors" header (xx-large)
+        --   Sections rendered in known-sensor order:
+        --     k10temp/coretemp → "󰻠 CPU"
+        --     amdgpu           → "󰢮 GPU AMD"
+        --     nvme*            → "󰋊 NVMe" (prefix match)
+        --     nct6799          → "󰘚 Motherboard"
+        --     spd5118          → "󰍛 RAM" (DIMMs numbered)
+        --     nvidia-smi       → "󰢮 GPU NVIDIA"
+        --   Multiple same-type devices get numbered headers (e.g. "NVMe 1", "NVMe 2").
+        --   RAM DIMMs: single "RAM" header, "DIMM 1", "DIMM 2" sub-labels.
+        --   Unknown sensors rendered last with raw hwmon name as header.
+        --   Temperatures right-aligned to 5.1 format, colored per sensor kind thresholds.
+}
+
+-- § Usage formatting
+
+rule FormatUsage {
+    when: ServeUsage(cached_data)
+
+    ensures: WidgetServed(
+        module: usage,
+        text: format_usage_bar(cached_data),
+        tooltip: format_usage_tooltip(cached_data)
+    )
+
+    @guidance
+        -- Bar text (x-small):
+        --   Per visible provider (CLI installed or has credentials):
+        --     "C" (Claude) or "X" (Codex) + weekly usage percentage
+        --     Colored by remaining capacity: green >50%, yellow 25-50%, peach 10-25%, red <10%
+        --     If token expired: muted color with "?" suffix (signals staleness)
+        --     If no weekly data: muted "—" placeholder
+        --   If both providers disabled: single muted 󰻀 (nf-md-head_cog) icon.
+        --
+        -- Tooltip:
+        --   "AI Usage" header (xx-large)
+        --   Per visible provider section:
+        --     Separator: ━━━ Name (Plan) ━━━
+        --     If not configured: install/login instructions
+        --     If token expired: "Token expired — run: login_cmd"
+        --       Followed by "Last data (age):" header if stale data exists
+        --     Rate windows displayed as meter bars:
+        --       Label (padded)  ██████░░░░  XX%  resets in Xh Ym
+        --       Labels: "Rate (5h):", "Weekly:", "{Model} weekly:"
+        --     Meter bar: 10 blocks, filled colored by capacity, empty in muted
+        --     Countdown: "resets in Xs/Xm/Xh Ym/Xd Yh" or "resetting..."
+        --     Credits: "Extra: $X.XX / $Y.YY" (Claude) or "Credits: $X.XX" (Codex)
+        --     Status line: ✓/⚠/✗/⚙ indicator + description, colored by severity
+        --   Cache freshness footer:
+        --     "Updated Xs/Xm/Xh ago" colored by age:
+        --       muted <4m, yellow 4-10m, peach >10m
+        --
+        -- Data carry-forward: on partial fetch failure (one provider fails),
+        --   stale data from previous cache is preserved for the failed provider.
+        --   Exception: token_expired flag is NOT carried forward — allows
+        --   self-healing within one fetch cycle (120s) after re-login.
+        --   Allows partial updates without losing all data on transient errors.
+}
+
+------------------------------------------------------------
+-- Surfaces
+------------------------------------------------------------
+
+surface WaybarHTTP {
+    provides:
+        ServeWeather(cached_data)
+        ServeCrypto(cached_data)
+        ServeSensors(cached_data)
+        ServeUsage(cached_data)
+
+    @guarantee WaybarJsonContract
+        -- Every API response is JSON with exactly "text" and "tooltip" string fields.
+        -- Both contain Pango markup. Tooltip is always wrapped in <tt>...</tt>.
+        -- Waybar expects this exact shape; any deviation breaks the widget.
+
+    @guarantee FreshData
+        -- Each widget's data is refreshed at its configured interval.
+        -- Weather: 10 minutes. Crypto: 15 minutes. Sensors: 1 second. Usage: 2 minutes.
+
+    @guarantee GracefulDegradation
+        -- If a module's query fails, stale cached data is served until a successful refresh.
+        -- If no cache exists at all, an error widget (⛓️‍💥) is returned.
+
+    @guarantee AtomicCacheWrites
+        -- Cache files are written atomically (temp file + rename) to prevent
+        -- serving partially-written data during concurrent read/write.
+
+    @guidance
+        -- HTTP server routes:
+        --   GET /api/weather  → ServeWeather
+        --   GET /api/crypto   → ServeCrypto
+        --   GET /api/sensors  → ServeSensors
+        --   GET /api/usage    → ServeUsage
+        --   All other paths   → 404
+        --
+        -- Each route reads the module's cache file (~/.cache/waybap/{name}.json),
+        -- parses JSON, runs the module formatter, and returns WaybarOutput as JSON.
+        --
+        -- On error (missing cache, corrupted data, parse failure):
+        --   Returns JSON with "⛓️‍💥" as text and error message as tooltip.
+        --
+        -- Waybar polls each endpoint at its own interval (typically 1s for sensors,
+        -- longer for others). The server is stateless — it reads cache files
+        -- on each request. This is cheap enough to serve at 1-second intervals.
+}
+
+-- Key resolved decisions (see git history for full decision log):
+-- No token refresh: waybap never refreshes OAuth tokens — avoids invalidating the
+--   CLI's in-memory refresh token via OAuth2 rotation. Stale state self-heals when CLI refreshes.
+-- Bar text shows weekly %: 7-day window is more stable than 5-hour session window. Session
+--   and model-specific windows are visible only in the tooltip.
+-- Partial failure carry-forward: on usage fetch, stale data for a failed provider is preserved
+--   from the previous cache. token_expired is NOT carried forward (allows 120s self-healing).
+-- Cache raw API responses: cache stores raw wire format wrapped with metadata, not processed
+--   structs. Preserves the original data for debugging.
+-- No token cost tracking: local JSONL log scanning was considered but dropped — not worth
+--   the complexity for the incremental value.
+-- No CLI fallback: parsing CLI output (claude/codex usage) was considered but dropped — fragile
+--   text parsing, OAuth covers the main case.

@@ -1,3 +1,5 @@
+use crate::catppuccin;
+
 const DIRECTIONS: &[&str] = &["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
 
 pub fn wind_direction(degrees: i32) -> &'static str {
@@ -30,13 +32,13 @@ pub fn format_conditions(code: i32, precip: i32, cloud: i32, snow: f64, vis: f64
 
 fn color_temp_fmt(display: String, temp: i32) -> String {
     if temp <= -10 {
-        format!("<span foreground=\"#949cbb\">{display}</span>")
+        format!("<span foreground=\"{}\">{display}</span>", catppuccin::MUTED)
     } else if temp <= 0 {
-        format!("<span foreground=\"#8caaee\">{display}</span>")
+        format!("<span foreground=\"{}\">{display}</span>", catppuccin::BLUE)
     } else if temp >= 31 {
-        format!("<span foreground=\"#e78284\">{display}</span>")
+        format!("<span foreground=\"{}\">{display}</span>", catppuccin::RED)
     } else if temp >= 16 {
-        format!("<span foreground=\"#ef9f76\">{display}</span>")
+        format!("<span foreground=\"{}\">{display}</span>", catppuccin::PEACH)
     } else {
         display
     }

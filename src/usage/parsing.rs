@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 
+use crate::catppuccin;
 use crate::pango;
 
 struct RateWindow {
@@ -180,13 +181,13 @@ fn parse_codex_entry(provider: &Value) -> ProviderUsage {
 fn usage_color(used_percent: f64) -> &'static str {
     let remaining = 100.0 - used_percent;
     if remaining > 50.0 {
-        "#a6d189" // green
+        catppuccin::GREEN
     } else if remaining > 25.0 {
-        "#e5c890" // yellow
+        catppuccin::YELLOW
     } else if remaining > 10.0 {
-        "#ef9f76" // peach
+        catppuccin::PEACH
     } else {
-        "#e78284" // red
+        catppuccin::RED
     }
 }
 
@@ -202,7 +203,7 @@ fn format_countdown(resets_at: &Option<String>) -> String {
     let diff = reset_time.signed_duration_since(Utc::now());
     let total_secs = diff.num_seconds();
     if total_secs <= 0 {
-        return "<span foreground=\"#949cbb\">resetting...</span>".to_string();
+        return format!("<span foreground=\"{}\">resetting...</span>", catppuccin::MUTED);
     }
     let total_mins = diff.num_minutes();
     let total_hours = diff.num_hours();
@@ -252,7 +253,7 @@ fn format_data_age(data_timestamp: &Option<String>) -> String {
 
 fn format_meter_line(label: &str, window: &RateWindow, pad_to: usize) -> String {
     let color = usage_color(window.used_percent);
-    let bar = pango::meter_bar(window.used_percent, 10, color, "#949cbb");
+    let bar = pango::meter_bar(window.used_percent, 10, color, catppuccin::MUTED);
     let countdown = format_countdown(&window.resets_at);
     let pct = format!("{:.0}%", window.used_percent.clamp(0.0, 100.0));
     // @NOTE: Pad first (using visual char width), then escape for Pango safety.
@@ -266,11 +267,11 @@ fn format_meter_line(label: &str, window: &RateWindow, pad_to: usize) -> String 
 fn format_status_line(status: &ProviderStatus) -> String {
     let desc = pango::escape(&status.description);
     match status.indicator.as_str() {
-        "none" => format!("<span foreground=\"#a6d189\">✓ {desc}</span>"),
-        "minor" => format!("<span foreground=\"#e5c890\">⚠ {desc}</span>"),
-        "major" | "critical" => format!("<span foreground=\"#e78284\">✗ {desc}</span>"),
-        "maintenance" => format!("<span foreground=\"#949cbb\">⚙ {desc}</span>"),
-        _ => format!("<span foreground=\"#949cbb\">? {desc}</span>"),
+        "none" => format!("<span foreground=\"{}\">✓ {desc}</span>", catppuccin::GREEN),
+        "minor" => format!("<span foreground=\"{}\">⚠ {desc}</span>", catppuccin::YELLOW),
+        "major" | "critical" => format!("<span foreground=\"{}\">✗ {desc}</span>", catppuccin::RED),
+        "maintenance" => format!("<span foreground=\"{}\">⚙ {desc}</span>", catppuccin::MUTED),
+        _ => format!("<span foreground=\"{}\">? {desc}</span>", catppuccin::MUTED),
     }
 }
 
@@ -364,13 +365,13 @@ fn format_bar_line(prefix: &str, usage: &ProviderUsage) -> String {
     let weekly = match usage.weekly.as_ref() {
         Some(w) => w,
         // Active provider but no weekly data — show muted placeholder
-        None => return format!("<span foreground=\"#949cbb\">{prefix} —</span>"),
+        None => return format!("<span foreground=\"{}\">{prefix} —</span>", catppuccin::MUTED),
     };
     let clamped = weekly.used_percent.clamp(0.0, 100.0);
     let pct = clamped.round() as i64;
     if usage.token_expired {
         // Muted color with ? suffix — signals data staleness (D17)
-        format!("<span foreground=\"#949cbb\">{prefix} {pct}?</span>")
+        format!("<span foreground=\"{}\">{prefix} {pct}?</span>", catppuccin::MUTED)
     } else {
         let color = usage_color(clamped);
         format!("<span foreground=\"{color}\">{prefix} {pct}</span>")
@@ -389,11 +390,11 @@ fn format_freshness(timestamp: &str) -> String {
 
     // Color by cache age: muted (<4m), yellow (4-10m), peach (>10m)
     let color = if secs < 240 {
-        "#949cbb"
+        catppuccin::MUTED
     } else if secs < 600 {
-        "#e5c890"
+        catppuccin::YELLOW
     } else {
-        "#ef9f76"
+        catppuccin::PEACH
     };
 
     format!("<span foreground=\"{color}\">Updated {age_text}</span>")
@@ -421,8 +422,8 @@ pub fn parse_data(data: Value) -> Result<String, Box<dyn std::error::Error>> {
     }
 
     let bar_text = if bar_lines.is_empty() {
-        // Both providers disabled — single muted icon
-        "<span foreground=\"#949cbb\">\u{F0EC0}</span>".to_string() // 󰻀 nf-md-head_cog
+        // Both providers disabled — single muted 󰻀 nf-md-head_cog icon
+        format!("<span foreground=\"{}\">\u{F0EC0}</span>", catppuccin::MUTED)
     } else {
         format!("<span size=\"x-small\">{}</span>", bar_lines.join("\n"))
     };

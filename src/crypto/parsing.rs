@@ -2,6 +2,8 @@ use serde::Deserialize;
 use serde_aux::prelude::*;
 use serde_json::{json, value::from_value, Value};
 
+use crate::catppuccin;
+
 #[derive(Deserialize, Debug)]
 struct Coin {
     name: String,
@@ -19,7 +21,10 @@ pub fn parse_data(raw_crypto: Value) -> Result<String, Box<dyn std::error::Error
     // @NOTE: You can't put 'class' on the span here for some reason, but you
     //        can change a bunch of things directly with this special subset
     //        of html (bruh): https://docs.gtk.org/Pango/pango_markup.html
-    let mut text = "<span size=\"large\" foreground=\"#F7931A\"> 󰠓</span>\n".to_string(); // Using bitcoin orange.
+    let mut text = format!(
+        "<span size=\"large\" foreground=\"{}\"> 󰠓</span>\n",
+        catppuccin::BITCOIN_ORANGE
+    );
     let mut tooltip = "<span size=\"xx-large\">Crypto</span>\n".to_string();
     let max_name_len = coins
         .iter()
@@ -28,7 +33,11 @@ pub fn parse_data(raw_crypto: Value) -> Result<String, Box<dyn std::error::Error
         .unwrap_or(0);
     for (i, coin) in coins.iter().enumerate() {
         let change = coin.change.unwrap_or(0.0);
-        let color = if change < 0.0 { "#e78284" } else { "#a6d189" };
+        let color = if change < 0.0 {
+            catppuccin::RED
+        } else {
+            catppuccin::GREEN
+        };
         // @NOTE: Store bitcoin price to display in the sidebar.
         if coin.symbol == "btc" {
             // @TODO: We have to do this, because of hardcoded color/emoji.
@@ -51,7 +60,7 @@ pub fn parse_data(raw_crypto: Value) -> Result<String, Box<dyn std::error::Error
                 "<span foreground=\"{color}\">{space}{c:.1}%</span>",
                 space = if c < 0.0 { "" } else { " " },
             ),
-            None => "<span foreground=\"#949cbb\"> N/A</span>".to_string(),
+            None => format!("<span foreground=\"{}\"> N/A</span>", catppuccin::MUTED),
         };
         tooltip += format!(
             "{coin_name: <cname_len$}{price_value: <45}{change_text}\n",

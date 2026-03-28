@@ -2,6 +2,7 @@ use chrono::{Local, NaiveDate};
 use serde::Deserialize;
 use serde_json::{json, value::from_value, Value};
 
+use crate::catppuccin;
 use crate::weather::constants::{get_description, get_icon};
 use crate::weather::utils::*;
 
@@ -59,21 +60,21 @@ struct DailyWeather {
 
 fn bar_icon_color(code: i32, is_day: bool) -> &'static str {
     if !is_day && (code == 0 || code == 1) {
-        return "#949cbb"; // muted — night
+        return catppuccin::MUTED; // night
     }
     match code {
-        0 => "#e5c890",       // yellow — sunny
-        1 | 2 => "#e5c890",   // yellow — partly cloudy
-        3 => "#949cbb",       // muted — overcast
-        45 | 48 => "#949cbb", // muted — fog
-        51..=57 => "#8caaee", // blue — drizzle
-        61..=65 => "#8caaee", // blue — rain
-        66 | 67 => "#8caaee", // blue — freezing rain
-        71..=77 => "#babbf1", // lavender — snow
-        80..=82 => "#8caaee", // blue — showers
-        85 | 86 => "#babbf1", // lavender — snow showers
-        95..=99 => "#ef9f76", // peach — thunderstorm
-        _ => "#949cbb",       // muted fallback
+        0 => catppuccin::YELLOW,         // sunny
+        1 | 2 => catppuccin::YELLOW,     // partly cloudy
+        3 => catppuccin::MUTED,          // overcast
+        45 | 48 => catppuccin::MUTED,    // fog
+        51..=57 => catppuccin::BLUE,     // drizzle
+        61..=65 => catppuccin::BLUE,     // rain
+        66 | 67 => catppuccin::BLUE,     // freezing rain
+        71..=77 => catppuccin::LAVENDER, // snow
+        80..=82 => catppuccin::BLUE,     // showers
+        85 | 86 => catppuccin::LAVENDER, // snow showers
+        95..=99 => catppuccin::PEACH,    // thunderstorm
+        _ => catppuccin::MUTED,          // fallback
     }
 }
 
@@ -81,7 +82,7 @@ fn bar_icon_color(code: i32, is_day: bool) -> &'static str {
 /// Tooltip still uses emoji via get_icon().
 fn bar_icon(code: i32, is_day: bool) -> &'static str {
     if !is_day && (code == 0 || code == 1) {
-        return "\u{F0F36}"; // 󰼶 nf-md-weather_night
+        return "\u{F0594}"; // 󰖔 nf-md-weather_night
     }
     match code {
         0 => "\u{F0599}",       // 󰖙 nf-md-weather_sunny
@@ -91,7 +92,7 @@ fn bar_icon(code: i32, is_day: bool) -> &'static str {
         45 | 48 => "\u{F0591}", // 󰖑 nf-md-weather_fog
         51..=57 => "\u{F0597}", // 󰖗 nf-md-weather_rainy
         61..=65 => "\u{F0597}", // 󰖗 nf-md-weather_rainy
-        66 | 67 => "\u{F0598}", // 󰖘 nf-md-weather_snowy_rainy
+        66 | 67 => "\u{F067F}", // 󰙿 nf-md-weather_snowy_rainy
         71..=77 => "\u{F0598}", // 󰖘 nf-md-weather_snowy
         80..=82 => "\u{F0596}", // 󰖖 nf-md-weather_pouring
         85 | 86 => "\u{F0F36}", // 󰼶 nf-md-weather_snowy_heavy

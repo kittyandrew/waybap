@@ -3,7 +3,7 @@ use reqwest::blocking::Client;
 
 pub fn query() -> Option<String> {
     let client = match Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(10))
         // We have to use this custom header, because cloudflare blocks default one.
         .user_agent("curl/8.6.0")
         .build()
