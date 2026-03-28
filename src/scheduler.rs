@@ -79,12 +79,15 @@ impl Job {
                     }
                     None => {
                         iterations += 1;
-                        thread::sleep(std::time::Duration::from_secs(iterations));
-
-                        if iterations == self.retries {
-                            eprintln!("Failed running '{name}' after retries!", name = &self.name);
+                        if iterations > self.retries {
+                            eprintln!(
+                                "Failed running '{name}' after {retries} retries!",
+                                name = &self.name,
+                                retries = self.retries,
+                            );
                             break;
                         }
+                        thread::sleep(std::time::Duration::from_secs(iterations));
                     }
                 }
             }

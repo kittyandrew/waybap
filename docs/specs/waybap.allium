@@ -106,7 +106,7 @@ rule FetchModuleData {
         -- Runs the module's query function. On success, writes result
         -- to ~/.cache/waybap/{module.name}.json atomically (temp file + rename).
         -- On failure, retries up to config.max_retries times with
-        -- linear backoff (1s, 2s, 3s).
+        -- linear backoff (1s per retry, up to max_retries seconds).
 }
 
 -- § Weather formatting
@@ -163,7 +163,7 @@ rule FormatWeather {
         -- Tooltip layout:
         --   Location header (large span)
         --   Current: emoji description actual°(feels°)
-        --   Wind: speed km/h direction  |  Humidity: %
+        --   Wind: speed km/h direction   |   Humidity: %
         --   Per-day sections (3 days):
         --     Header: "Today/Tomorrow, " prefix + "%-d %B %Y" date format
         --     Daily summary: 🌡️↑ max°(feels°) 🌡️↓ min°(feels°)  🌧️precip%  🌅sunrise 🌇sunset
@@ -319,7 +319,8 @@ surface WaybarHTTP {
         -- parses JSON, runs the module formatter, and returns WaybarOutput as JSON.
         --
         -- On error (missing cache, corrupted data, parse failure):
-        --   Returns JSON with "⛓️‍💥" as text and error message as tooltip.
+        --   Returns JSON with "⛓️‍💥" as text and error message as tooltip
+        --   (subject to WaybarJsonContract — tooltip is <tt>-wrapped).
         --
         -- Waybar polls each endpoint at its own interval (typically 1s for sensors,
         -- longer for others). The server is stateless — it reads cache files

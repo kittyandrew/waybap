@@ -22,7 +22,7 @@ fn serve_json(request: Request, bytes: &[u8]) -> io::Result<()> {
 fn serve_error_json(request: Request, err_message: String) -> io::Result<()> {
     let err_res = serde_json::json!({
         "text": "⛓️‍💥",
-        "tooltip": pango::escape(&err_message)
+        "tooltip": format!("<tt>{}</tt>", pango::escape(&err_message))
     });
     serve_json(request, err_res.to_string().as_bytes())
 }

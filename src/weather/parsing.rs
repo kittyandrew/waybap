@@ -130,11 +130,11 @@ pub fn parse_data(raw_weather: Value) -> Result<String, Box<dyn std::error::Erro
     let desc = get_description(current.weather_code);
     tooltip += &format!("{icon} <b>{desc}</b> {}({feels_colored})\n", color_temp(temp));
     tooltip += &format!(
-        "Wind: {} km/h {}\n",
+        "Wind: {} km/h {:>2}   |   Humidity: {}%\n",
         current.wind_speed_10m.round() as i32,
-        wind_direction(current.wind_direction_10m)
+        wind_direction(current.wind_direction_10m),
+        current.relative_humidity_2m
     );
-    tooltip += &format!("Humidity: {}%\n", current.relative_humidity_2m);
 
     // Parse location-local date and hour from the API response
     let (today_str, now_hour) = {
