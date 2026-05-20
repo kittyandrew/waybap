@@ -15,6 +15,17 @@ struct Coin {
     change: Option<f64>,
 }
 
+fn display_change(change: f64) -> (&'static str, f64) {
+    let rounded = (change * 10.0).round() / 10.0;
+    if rounded == 0.0 {
+        (catppuccin::MUTED, 0.0)
+    } else if rounded < 0.0 {
+        (catppuccin::RED, rounded)
+    } else {
+        (catppuccin::GREEN, rounded)
+    }
+}
+
 pub fn parse_data(raw_crypto: Value) -> Result<String, Box<dyn std::error::Error>> {
     let coins = from_value::<Vec<Coin>>(raw_crypto)?;
 
@@ -33,11 +44,7 @@ pub fn parse_data(raw_crypto: Value) -> Result<String, Box<dyn std::error::Error
         .unwrap_or(0);
     for coin in &coins {
         let change = coin.change.unwrap_or(0.0);
-        let color = if change < 0.0 {
-            catppuccin::RED
-        } else {
-            catppuccin::GREEN
-        };
+        let (color, displayed_change) = display_change(change);
         // @NOTE: Store bitcoin price to display in the sidebar.
         if coin.symbol == "btc" {
             text = format!(
@@ -52,9 +59,9 @@ pub fn parse_data(raw_crypto: Value) -> Result<String, Box<dyn std::error::Error
             precision = 7_usize.saturating_sub(format!("${price}", price = coin.price.round()).len()),
         );
         let change_text = match coin.change {
-            Some(c) => format!(
-                "<span foreground=\"{color}\">{space}{c:.1}%</span>",
-                space = if c < 0.0 { "" } else { " " },
+            Some(_) => format!(
+                "<span foreground=\"{color}\">{space}{displayed_change:.1}%</span>",
+                space = if displayed_change < 0.0 { "" } else { " " },
             ),
             None => format!("<span foreground=\"{}\"> N/A</span>", catppuccin::MUTED),
         };
@@ -97,5 +104,19 @@ mod tests {
         assert!(rendered.contains("101.0k"));
         assert!(rendered.contains("Ethereum"));
         assert!(rendered.contains("Bitcoin"));
+    }
+
+    #[test]
+    fn renders_display_rounded_zero_change_as_muted_zero() {
+        let rendered = parse_data(json!([{
+            "name": "Bitcoin",
+            "symbol": "btc",
+            "current_price": 101000.0,
+            "price_change_percentage_24h": -0.04
+        }]))
+        .expect("crypto data renders");
+
+        assert!(!rendered.contains("-0.0%"));
+        assert!(rendered.contains("foreground=\\\"#949cbb\\\"> 0.0%"));
     }
 }
