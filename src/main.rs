@@ -18,11 +18,20 @@ fn help_text(program: &str) {
     eprintln!("    test <weather|crypto|sensors|usage> [--cache] fetch and parse live data (or cached)");
 }
 
-fn start_scheduler() {
-    scheduler::Job::new("weather", 60 * 10, weather::query).run();
-    scheduler::Job::new("crypto", 60 * 15, crypto::query).run();
-    scheduler::Job::new("sensors", 1, sensors::query).run();
-    scheduler::Job::new("usage", 120, usage::query).run();
+fn start_scheduler() -> Result<(), ()> {
+    scheduler::Job::new("weather", 60 * 10, weather::query)
+        .run()
+        .map_err(|err| eprintln!("ERROR: failed to start weather scheduler: {err}"))?;
+    scheduler::Job::new("crypto", 60 * 15, crypto::query)
+        .run()
+        .map_err(|err| eprintln!("ERROR: failed to start crypto scheduler: {err}"))?;
+    scheduler::Job::new("sensors", 1, sensors::query)
+        .run()
+        .map_err(|err| eprintln!("ERROR: failed to start sensors scheduler: {err}"))?;
+    scheduler::Job::new("usage", 120, usage::query)
+        .run()
+        .map_err(|err| eprintln!("ERROR: failed to start usage scheduler: {err}"))?;
+    Ok(())
 }
 
 fn run_query(
@@ -53,7 +62,7 @@ fn run_query(
 
 fn entry() -> Result<(), ()> {
     let mut args = env::args();
-    let program = args.next().expect("path to program is provided");
+    let program = args.next().unwrap_or_else(|| "waybap".to_string());
 
     let subcommand = args.next().ok_or_else(|| {
         help_text(&program);
@@ -61,7 +70,7 @@ fn entry() -> Result<(), ()> {
     })?;
     match subcommand.as_str() {
         "serve" => {
-            start_scheduler();
+            start_scheduler()?;
 
             let address = args.next().unwrap_or("127.0.0.1:6969".to_string());
             server::start(&address)

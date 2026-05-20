@@ -1,4 +1,4 @@
-use serde_json::{json, value::from_value, Value};
+use serde_json::{Value, json, value::from_value};
 
 use super::SensorData;
 use crate::catppuccin;

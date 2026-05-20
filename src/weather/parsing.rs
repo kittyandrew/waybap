@@ -1,6 +1,6 @@
 use chrono::{Local, NaiveDate};
 use serde::Deserialize;
-use serde_json::{json, value::from_value, Value};
+use serde_json::{Value, json, value::from_value};
 
 use crate::catppuccin;
 use crate::weather::constants::{get_description, get_icon};
@@ -47,8 +47,6 @@ struct HourlyWeather {
 #[derive(Deserialize)]
 struct DailyWeather {
     time: Vec<String>,
-    #[allow(dead_code)]
-    weather_code: Vec<i32>,
     temperature_2m_max: Vec<f64>,
     temperature_2m_min: Vec<f64>,
     apparent_temperature_max: Vec<f64>,

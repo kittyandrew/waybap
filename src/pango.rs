@@ -28,3 +28,28 @@ pub fn meter_bar(used_percent: f64, width: usize, filled_color: &str, empty_colo
         "░".repeat(empty),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn escapes_xml_special_characters() {
+        assert_eq!(
+            escape("Tom & <Jerry> \"cat'"),
+            "Tom &amp; &lt;Jerry&gt; &quot;cat&apos;"
+        );
+    }
+
+    #[test]
+    fn meter_bar_clamps_percentages() {
+        assert_eq!(
+            meter_bar(125.0, 4, "#fff", "#000"),
+            "<span foreground=\"#fff\">████</span><span foreground=\"#000\"></span>"
+        );
+        assert_eq!(
+            meter_bar(-10.0, 4, "#fff", "#000"),
+            "<span foreground=\"#fff\"></span><span foreground=\"#000\">░░░░</span>"
+        );
+    }
+}

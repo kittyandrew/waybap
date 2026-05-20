@@ -13,7 +13,13 @@ const NVIDIA_INTERVAL: Duration = Duration::from_secs(10);
 static NVIDIA_CACHE: Mutex<(Vec<f64>, Option<Instant>)> = Mutex::new((Vec::new(), None));
 
 fn query_nvidia() -> Vec<f64> {
-    let mut cache = NVIDIA_CACHE.lock().unwrap();
+    let mut cache = match NVIDIA_CACHE.lock() {
+        Ok(cache) => cache,
+        Err(err) => {
+            eprintln!("ERROR: NVIDIA temperature cache was poisoned, continuing with cached data");
+            err.into_inner()
+        }
+    };
     let stale = cache.1.map(|t| t.elapsed() >= NVIDIA_INTERVAL).unwrap_or(true);
     if !stale {
         return cache.0.clone();

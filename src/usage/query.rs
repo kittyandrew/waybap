@@ -1,7 +1,7 @@
 use chrono::Utc;
 use core::time::Duration;
 use reqwest::blocking::Client;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::fs::read_to_string;
 
 use crate::scheduler::get_cache_fp;
@@ -273,21 +273,21 @@ pub fn query() -> Option<String> {
     //   is followed by a network failure, the stale data reappears without the "token expired"
     //   warning until the next successful fetch or local expiry check. Accepted trade-off:
     //   self-heals within 120s and avoids complexity of merging token states.
-    if claude["data"].is_null() && has_claude_creds {
-        if let Some(ref prev) = prev_cache {
-            if !prev["claude"]["data"].is_null() {
-                claude["data"] = prev["claude"]["data"].clone();
-                claude["data_timestamp"] = prev["claude"]["data_timestamp"].clone();
-            }
-        }
+    if claude["data"].is_null()
+        && has_claude_creds
+        && let Some(ref prev) = prev_cache
+        && !prev["claude"]["data"].is_null()
+    {
+        claude["data"] = prev["claude"]["data"].clone();
+        claude["data_timestamp"] = prev["claude"]["data_timestamp"].clone();
     }
-    if codex["data"].is_null() && has_codex_creds {
-        if let Some(ref prev) = prev_cache {
-            if !prev["codex"]["data"].is_null() {
-                codex["data"] = prev["codex"]["data"].clone();
-                codex["data_timestamp"] = prev["codex"]["data_timestamp"].clone();
-            }
-        }
+    if codex["data"].is_null()
+        && has_codex_creds
+        && let Some(ref prev) = prev_cache
+        && !prev["codex"]["data"].is_null()
+    {
+        codex["data"] = prev["codex"]["data"].clone();
+        codex["data_timestamp"] = prev["codex"]["data_timestamp"].clone();
     }
 
     // @NOTE: Return Some() even when both providers are unconfigured — parsing handles

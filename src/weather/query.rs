@@ -1,6 +1,6 @@
 use core::time::Duration;
 use reqwest::blocking::Client;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::OnceLock;
 
 struct Location {

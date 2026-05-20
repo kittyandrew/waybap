@@ -53,3 +53,22 @@ pub fn color_temp(temp: i32) -> String {
 pub fn color_temp_padded(temp: i32) -> String {
     color_temp_fmt(format!("{temp: >3}°"), temp)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wind_direction_wraps_degrees() {
+        assert_eq!(wind_direction(0), "N");
+        assert_eq!(wind_direction(45), "NE");
+        assert_eq!(wind_direction(360), "N");
+        assert_eq!(wind_direction(-45), "NW");
+    }
+
+    #[test]
+    fn format_conditions_includes_only_relevant_parts() {
+        assert_eq!(format_conditions(0, 0, 25, 0.0, 10_000.0), " (☁️ 25%)");
+        assert_eq!(format_conditions(61, 80, 100, 0.0, 500.0), ", Precip 80%, Vis 500m");
+    }
+}

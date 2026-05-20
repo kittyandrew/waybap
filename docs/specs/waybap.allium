@@ -193,7 +193,7 @@ rule FormatCrypto {
         --   Line 1: Bitcoin logo 󰠓 (large, Bitcoin orange #F7931A)
         --   Line 2: BTC price in thousands (e.g. "87.3k") colored by 24h change
         --     green if positive, red if negative (x-small)
-        --   First coin in data must be Bitcoin.
+        --   BTC may appear anywhere in the API result; render it when present.
         --
         -- Tooltip:
         --   "Crypto" header (xx-large)

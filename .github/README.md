@@ -108,7 +108,24 @@ All endpoints return `{"text": "...", "tooltip": "..."}` with Pango markup, comp
 ```sh
 # With Nix
 nix build
+nix build .#waybap
 
 # With Cargo
 cargo build --release
+```
+
+## Checks
+
+```sh
+nix develop -c actionlint
+nix develop -c zizmor .github/workflows
+nix develop -c alejandra -c .
+nix develop -c deadnix flake.nix hmModule.nix
+nix flake check --print-build-logs
+nix build .#waybap --print-build-logs
+nix develop -c cargo fmt --check
+nix develop -c cargo clippy --all-targets --all-features -- -D warnings
+nix develop -c cargo test --all-targets --all-features --locked
+nix develop -c cargo build --all-targets --all-features --locked
+allium check docs/specs/waybap.allium
 ```

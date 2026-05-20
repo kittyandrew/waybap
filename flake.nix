@@ -9,7 +9,9 @@
       url = "github:nix-community/fenix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    crane.url = "github:ipetkov/crane";
+    crane = {
+      url = "github:ipetkov/crane";
+    };
     home-manager = {
       url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -24,30 +26,63 @@
     flake-parts.lib.mkFlake {inherit inputs;} {
       systems = ["x86_64-linux" "aarch64-linux" "aarch64-darwin" "x86_64-darwin"];
       perSystem = {
-        config,
-        self',
-        inputs',
         pkgs,
         system,
         ...
-      }: {
+      }: let
+        inherit (pkgs) lib;
+
+        rustToolchain = inputs.fenix.packages.${system}.stable.withComponents [
+          "cargo"
+          "clippy"
+          "rustc"
+          "rustfmt"
+        ];
+
+        craneLib =
+          (inputs.crane.mkLib pkgs).overrideToolchain
+          rustToolchain;
+
+        waybap = craneLib.buildPackage {
+          src = craneLib.cleanCargoSource ./.;
+        };
+      in {
         formatter = pkgs.alejandra;
 
-        packages.default = let
-          craneLib =
-            (inputs.crane.mkLib pkgs).overrideToolchain
-            inputs.fenix.packages.${system}.minimal.toolchain;
-        in
-          craneLib.buildPackage {
-            src = ./.;
-          };
+        packages = {
+          default = waybap;
+          inherit waybap;
+        };
+
+        checks = lib.optionalAttrs pkgs.stdenv.isLinux {
+          home-manager-module =
+            (inputs.home-manager.lib.homeManagerConfiguration {
+              inherit pkgs;
+              modules = [
+                self.homeManagerModules.waybap
+                {
+                  home = {
+                    username = "waybap";
+                    homeDirectory = "/tmp/waybap";
+                    stateVersion = "24.11";
+                  };
+                  services.waybap.enable = true;
+                }
+              ];
+            })
+            .activationPackage;
+        };
 
         devShells.default = pkgs.mkShell {
           RUST_LOG = "info";
-          buildInputs = with pkgs; [
-            inputs.fenix.packages.${system}.complete.toolchain
-            clippy
-            rustc
+          packages = with pkgs; [
+            actionlint
+            alejandra
+            curl
+            deadnix
+            git
+            rustToolchain
+            zizmor
           ];
         };
       };

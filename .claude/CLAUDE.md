@@ -45,7 +45,18 @@ docs/specs/
 ## Build & test
 
 - Nix flake project. Use `nix develop` for dev shell, `nix build` for release.
-- `cargo build`, `cargo clippy`, `cargo fmt` for standard Rust workflow.
+- CI-equivalent local checks:
+  - `nix develop -c actionlint`
+  - `nix develop -c zizmor .github/workflows`
+  - `nix develop -c alejandra -c .`
+  - `nix develop -c deadnix flake.nix hmModule.nix`
+  - `nix flake check --print-build-logs`
+  - `nix build .#waybap --print-build-logs`
+  - `nix develop -c cargo fmt --check`
+  - `nix develop -c cargo clippy --all-targets --all-features -- -D warnings`
+  - `nix develop -c cargo test --all-targets --all-features --locked`
+  - `nix develop -c cargo build --all-targets --all-features --locked`
+- Project-specific spec check: `allium check docs/specs/waybap.allium`.
 - `cargo run -- serve [address]` starts the daemon (default: 127.0.0.1:6969).
 - `cargo run -- test <weather|crypto|sensors|usage> [--cache]` runs a full query+parse cycle for testing. Use `--cache` to test parsing against cached data without network.
 - `rustfmt.toml`: max_width = 121.

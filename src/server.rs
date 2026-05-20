@@ -15,7 +15,8 @@ fn serve_404(request: Request) -> io::Result<()> {
 
 fn serve_json(request: Request, bytes: &[u8]) -> io::Result<()> {
     let content_type_json = "application/json; charset=utf-8";
-    let content_type_header = Header::from_bytes("Content-Type", content_type_json).expect("valid header passed");
+    let content_type_header = Header::from_bytes("Content-Type", content_type_json)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid Content-Type header"))?;
     request.respond(Response::from_data(bytes).with_header(content_type_header))
 }
 
@@ -50,7 +51,7 @@ where
 }
 
 fn serve_request(request: Request) -> io::Result<()> {
-    #[cfg(debug_assertions)] // @TODO: only in debug mode, use proper log crate later
+    #[cfg(debug_assertions)]
     println!(
         "INFO: received request! method: {:?}, url: {:?}",
         request.method(),

@@ -2,7 +2,6 @@ self: {
   config,
   lib,
   pkgs,
-  inputs,
   ...
 }: let
   inherit (lib) mkIf mkEnableOption mkOption maintainers;

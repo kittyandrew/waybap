@@ -2,7 +2,7 @@
 //! Stripped down and simplified version of the scheduler from:
 //! https://github.com/BlackDex/job_scheduler/blob/master/src/lib.rs
 
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{DateTime, Utc};
 use std::fs;
 use std::fs::File;
 use std::io::prelude::*;
@@ -10,20 +10,26 @@ use std::io::prelude::*;
 use std::thread;
 
 pub fn get_cache_fp(name: &str) -> String {
-    let home_dir = std::env::var("HOME").expect("Home directory needs to exist!");
+    let home_dir = match std::env::var("HOME") {
+        Ok(home) => home,
+        Err(err) => {
+            eprintln!("ERROR: HOME is not set; cannot resolve ~/.cache/waybap: {err}");
+            std::process::exit(1);
+        }
+    };
     let cache_dir = format!("{home_dir}/.cache/waybap");
     let _ = fs::create_dir_all(&cache_dir);
     format!("{cache_dir}/{name}.json")
 }
 
 fn get_last_modified_or_default(filepath: &str) -> DateTime<Utc> {
-    if let Ok(metadata) = fs::metadata(filepath) {
-        if let Ok(last_modified) = metadata.modified() {
-            return last_modified.into();
-        }
+    if let Ok(metadata) = fs::metadata(filepath)
+        && let Ok(last_modified) = metadata.modified()
+    {
+        return last_modified.into();
     }
-    // Return an oldest possible time so we are instantly running.
-    Utc.timestamp_opt(1, 0).unwrap()
+    // Return an old time so jobs run immediately when no cache exists.
+    DateTime::<Utc>::UNIX_EPOCH
 }
 
 pub struct Job {
@@ -106,20 +112,19 @@ impl Job {
         std::time::Duration::new(duration, 0)
     }
 
-    pub fn run(mut self) {
+    pub fn run(mut self) -> std::io::Result<()> {
         let job_name = format!("{name}-job", name = self.name);
+        let thread_name = job_name.clone();
 
-        std::thread::Builder::new()
-            .name(job_name.clone())
-            .spawn(move || {
-                println!("[{job_name}]: started thread - {:?}!", chrono::Utc::now());
-                loop {
-                    self.tick();
-                    let sleep_for = self.time_till_next_run();
-                    println!("[{job_name}]: sleeping for {:?} ...", sleep_for);
-                    std::thread::sleep(sleep_for);
-                }
-            })
-            .expect("Error spawning job-scheduler thread");
+        std::thread::Builder::new().name(job_name).spawn(move || {
+            println!("[{thread_name}]: started thread - {:?}!", chrono::Utc::now());
+            loop {
+                self.tick();
+                let sleep_for = self.time_till_next_run();
+                println!("[{thread_name}]: sleeping for {:?} ...", sleep_for);
+                std::thread::sleep(sleep_for);
+            }
+        })?;
+        Ok(())
     }
 }

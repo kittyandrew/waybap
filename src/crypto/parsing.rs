@@ -1,6 +1,6 @@
 use serde::Deserialize;
 use serde_aux::prelude::*;
-use serde_json::{json, value::from_value, Value};
+use serde_json::{Value, json, value::from_value};
 
 use crate::catppuccin;
 
@@ -31,7 +31,7 @@ pub fn parse_data(raw_crypto: Value) -> Result<String, Box<dyn std::error::Error
         .map(|c| crate::pango::escape(&c.name).len())
         .max()
         .unwrap_or(0);
-    for (i, coin) in coins.iter().enumerate() {
+    for coin in &coins {
         let change = coin.change.unwrap_or(0.0);
         let color = if change < 0.0 {
             catppuccin::RED
@@ -40,10 +40,6 @@ pub fn parse_data(raw_crypto: Value) -> Result<String, Box<dyn std::error::Error
         };
         // @NOTE: Store bitcoin price to display in the sidebar.
         if coin.symbol == "btc" {
-            // @TODO: We have to do this, because of hardcoded color/emoji.
-            if i != 0 {
-                return Err("Bitcoin has to be at the very top for this to work...".into());
-            }
             text = format!(
                 "{text}<span foreground=\"{color}\" size=\"x-small\">{price:.1}k</span>",
                 price = coin.price / 1000.0
@@ -73,4 +69,33 @@ pub fn parse_data(raw_crypto: Value) -> Result<String, Box<dyn std::error::Error
         "text": text,
         "tooltip": format!("<tt>{tooltip}</tt>"),
     }))?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn renders_btc_price_even_when_btc_is_not_first() {
+        let rendered = parse_data(json!([
+            {
+                "name": "Ethereum",
+                "symbol": "eth",
+                "current_price": 3500.0,
+                "price_change_percentage_24h": 1.2
+            },
+            {
+                "name": "Bitcoin",
+                "symbol": "btc",
+                "current_price": 101000.0,
+                "price_change_percentage_24h": -0.5
+            }
+        ]))
+        .expect("crypto data renders");
+
+        assert!(rendered.contains("101.0k"));
+        assert!(rendered.contains("Ethereum"));
+        assert!(rendered.contains("Bitcoin"));
+    }
 }
