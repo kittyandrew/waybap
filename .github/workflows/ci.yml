@@ -1,7 +1,8 @@
 name: ci
 
-# Token-free quality gates run on every PR and push. The secret-bearing Attic
-# build/cache job is restricted to the default branch after those gates pass.
+# Token-free quality gates run on every PR and push with a GHA-backed Nix cache.
+# The secret-bearing Attic package cache job is restricted to the default branch
+# after those gates pass.
 
 on:
   push:
@@ -24,7 +25,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: DeterminateSystems/nix-installer-action@21a544727d0c62386e78b4befe52d19ad12692e3
+      - uses: DeterminateSystems/determinate-nix-action@4eea0b33e3d1f02ecfe37cf16e7204c424009606
+
+      - uses: DeterminateSystems/magic-nix-cache-action@908b263ff629f4cc17666315b7fd3ec127c6244d
+        with:
+          use-flakehub: disabled
 
       - name: GitHub Actions lint (actionlint)
         run: nix develop -c actionlint
@@ -66,7 +71,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: DeterminateSystems/nix-installer-action@21a544727d0c62386e78b4befe52d19ad12692e3
+      - uses: DeterminateSystems/determinate-nix-action@4eea0b33e3d1f02ecfe37cf16e7204c424009606
 
       - name: Setup Attic cache
         uses: ryanccn/attic-action@5635a15ef0c5462194ffbd05d1daeddc74625c3a
@@ -74,9 +79,6 @@ jobs:
           endpoint: ${{ vars.ATTIC_ENDPOINT }}
           cache: general
           token: ${{ secrets.ATTIC_GENERAL_PUSH_TOKEN }}
-
-      - name: Flake check
-        run: nix flake check --print-build-logs
 
       - name: Build package
         run: nix build .#waybap --print-build-logs
