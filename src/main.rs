@@ -1,6 +1,4 @@
-use std::env;
-use std::fs::read_to_string;
-use std::process::ExitCode;
+use std::{env, fs::read_to_string, process::ExitCode};
 
 mod catppuccin;
 mod crypto;
@@ -35,9 +33,7 @@ fn start_scheduler() -> Result<(), ()> {
 }
 
 fn run_query(
-    name: &str,
-    use_cache: bool,
-    query: fn() -> Option<String>,
+    name: &str, use_cache: bool, query: fn() -> Option<String>,
     parse: fn(serde_json::Value) -> Result<String, Box<dyn std::error::Error>>,
 ) -> Result<(), ()> {
     let raw = if use_cache {

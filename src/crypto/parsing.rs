@@ -32,25 +32,15 @@ pub fn parse_data(raw_crypto: Value) -> Result<String, Box<dyn std::error::Error
     // @NOTE: You can't put 'class' on the span here for some reason, but you
     //        can change a bunch of things directly with this special subset
     //        of html (bruh): https://docs.gtk.org/Pango/pango_markup.html
-    let mut text = format!(
-        "<span size=\"large\" foreground=\"{}\"> 󰠓</span>\n",
-        catppuccin::BITCOIN_ORANGE
-    );
+    let mut text = format!("<span size=\"large\" foreground=\"{}\"> 󰠓</span>\n", catppuccin::BITCOIN_ORANGE);
     let mut tooltip = "<span size=\"xx-large\">Crypto</span>\n".to_string();
-    let max_name_len = coins
-        .iter()
-        .map(|c| crate::pango::escape(&c.name).len())
-        .max()
-        .unwrap_or(0);
+    let max_name_len = coins.iter().map(|c| crate::pango::escape(&c.name).len()).max().unwrap_or(0);
     for coin in &coins {
         let change = coin.change.unwrap_or(0.0);
         let (color, displayed_change) = display_change(change);
         // @NOTE: Store bitcoin price to display in the sidebar.
         if coin.symbol == "btc" {
-            text = format!(
-                "{text}<span foreground=\"{color}\" size=\"x-small\">{price:.1}k</span>",
-                price = coin.price / 1000.0
-            );
+            text = format!("{text}<span foreground=\"{color}\" size=\"x-small\">{price:.1}k</span>", price = coin.price / 1000.0);
         }
         let coin_name = format!("  <b>{name}</b>:", name = crate::pango::escape(&coin.name));
         let price_value = format!(

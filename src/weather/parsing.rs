@@ -2,9 +2,7 @@ use chrono::{Local, NaiveDate};
 use serde::Deserialize;
 use serde_json::{Value, json, value::from_value};
 
-use crate::catppuccin;
-use crate::weather::constants::{get_description, get_icon};
-use crate::weather::utils::*;
+use crate::{catppuccin, weather::constants::get_description, weather::constants::get_icon, weather::utils::*};
 
 #[derive(Deserialize)]
 struct QueryWrapper {
@@ -112,9 +110,7 @@ pub fn parse_data(raw_weather: Value) -> Result<String, Box<dyn std::error::Erro
 
     let bar_glyph = bar_icon(current.weather_code, is_day);
     let bar_glyph_color = bar_icon_color(current.weather_code, is_day);
-    let text = format!(
-        "<span size=\"x-small\"><span foreground=\"{bar_glyph_color}\">{bar_glyph}</span> {feels_colored}</span>"
-    );
+    let text = format!("<span size=\"x-small\"><span foreground=\"{bar_glyph_color}\">{bar_glyph}</span> {feels_colored}</span>");
 
     let mut tooltip = String::new();
 
@@ -138,11 +134,7 @@ pub fn parse_data(raw_weather: Value) -> Result<String, Box<dyn std::error::Erro
     let (today_str, now_hour) = {
         let parts: Vec<&str> = current.time.split('T').collect();
         let date = parts.first().ok_or("missing date in current.time")?;
-        let hour: u32 = parts
-            .get(1)
-            .and_then(|t| t.split(':').next())
-            .and_then(|h| h.parse().ok())
-            .unwrap_or(0);
+        let hour: u32 = parts.get(1).and_then(|t| t.split(':').next()).and_then(|h| h.parse().ok()).unwrap_or(0);
         (date.to_string(), hour)
     };
     let today = NaiveDate::parse_from_str(&today_str, "%Y-%m-%d")?;
@@ -204,11 +196,7 @@ pub fn parse_data(raw_weather: Value) -> Result<String, Box<dyn std::error::Erro
             let h_feels = hourly.apparent_temperature[h].round() as i32;
             let h_desc = get_description(h_code);
             let conditions = format_conditions(
-                h_code,
-                hourly.precipitation_probability[h],
-                hourly.cloud_cover[h],
-                hourly.snowfall[h],
-                hourly.visibility[h],
+                h_code, hourly.precipitation_probability[h], hourly.cloud_cover[h], hourly.snowfall[h], hourly.visibility[h],
             );
 
             tooltip += &format!(

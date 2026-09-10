@@ -1,10 +1,6 @@
 /// Escape XML special characters for safe use in Pango markup.
 pub fn escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&apos;")
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&apos;")
 }
 
 /// Capitalize first letter of a string: "sonnet" → "Sonnet"
@@ -35,21 +31,12 @@ mod tests {
 
     #[test]
     fn escapes_xml_special_characters() {
-        assert_eq!(
-            escape("Tom & <Jerry> \"cat'"),
-            "Tom &amp; &lt;Jerry&gt; &quot;cat&apos;"
-        );
+        assert_eq!(escape("Tom & <Jerry> \"cat'"), "Tom &amp; &lt;Jerry&gt; &quot;cat&apos;");
     }
 
     #[test]
     fn meter_bar_clamps_percentages() {
-        assert_eq!(
-            meter_bar(125.0, 4, "#fff", "#000"),
-            "<span foreground=\"#fff\">████</span><span foreground=\"#000\"></span>"
-        );
-        assert_eq!(
-            meter_bar(-10.0, 4, "#fff", "#000"),
-            "<span foreground=\"#fff\"></span><span foreground=\"#000\">░░░░</span>"
-        );
+        assert_eq!(meter_bar(125.0, 4, "#fff", "#000"), "<span foreground=\"#fff\">████</span><span foreground=\"#000\"></span>");
+        assert_eq!(meter_bar(-10.0, 4, "#fff", "#000"), "<span foreground=\"#fff\"></span><span foreground=\"#000\">░░░░</span>");
     }
 }

@@ -1,12 +1,6 @@
-use std::fs::read_to_string;
-use std::io;
+use std::{fs::read_to_string, io};
 
-use crate::crypto;
-use crate::pango;
-use crate::scheduler::get_cache_fp;
-use crate::sensors;
-use crate::usage;
-use crate::weather;
+use crate::{crypto, pango, scheduler::get_cache_fp, sensors, usage, weather};
 use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 
 fn serve_404(request: Request) -> io::Result<()> {
@@ -52,11 +46,7 @@ where
 
 fn serve_request(request: Request) -> io::Result<()> {
     #[cfg(debug_assertions)]
-    println!(
-        "INFO: received request! method: {:?}, url: {:?}",
-        request.method(),
-        request.url()
-    );
+    println!("INFO: received request! method: {:?}, url: {:?}", request.method(), request.url());
 
     match (request.method(), request.url()) {
         (Method::Get, "/api/weather") => serve_cached_api(request, "weather", weather::parse_data),
