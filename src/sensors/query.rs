@@ -1,7 +1,4 @@
-use std::fs;
-use std::process::Command;
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::{fs, process::Command, sync::Mutex, time::Duration, time::Instant};
 
 use super::{SensorData, SensorGroup, SensorReading};
 

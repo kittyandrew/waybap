@@ -36,12 +36,7 @@ fn try_resolve(client: &Client) -> Option<Location> {
                 eprintln!("WAYBAP_LAT/LON out of range (lat: -90..90, lon: -180..180): {lat}, {lon}");
                 return None;
             }
-            return Some(Location {
-                lat,
-                lon,
-                city: None,
-                country: None,
-            });
+            return Some(Location { lat, lon, city: None, country: None });
         }
         (Some(_), None) | (None, Some(_)) => {
             eprintln!("WAYBAP_LAT and WAYBAP_LON must both be set, ignoring partial config");
@@ -81,12 +76,7 @@ fn try_resolve(client: &Client) -> Option<Location> {
     let lon = geo["longitude"].as_f64()?;
     let city = geo["city"].as_str().map(String::from);
     let country = geo["country"].as_str().map(String::from);
-    Some(Location {
-        lat,
-        lon,
-        city,
-        country,
-    })
+    Some(Location { lat, lon, city, country })
 }
 
 fn resolve_location(client: &Client) -> Option<&'static Location> {
@@ -104,11 +94,7 @@ pub fn query() -> Option<String> {
     // @NOTE: Single client for all requests in this query cycle (D16).
     //   Uses 10s timeout for both geolocation and weather API — the geolocation
     //   endpoint is fast anyway; the previous 3s timeout was defensive, not load-bearing.
-    let client = match Client::builder()
-        .timeout(Duration::from_secs(10))
-        .user_agent("waybap/0.1.0")
-        .build()
-    {
+    let client = match Client::builder().timeout(Duration::from_secs(10)).user_agent("waybap/0.1.0").build() {
         Ok(c) => c,
         Err(e) => {
             eprintln!("Failed to build HTTP client for weather: {e}");
@@ -118,13 +104,10 @@ pub fn query() -> Option<String> {
 
     let loc = resolve_location(&client)?;
 
-    let location_name: Option<String> =
-        std::env::var("WAYBAP_LOCATION_NAME")
-            .ok()
-            .or_else(|| match (&loc.city, &loc.country) {
-                (Some(city), Some(country)) => Some(format!("{city}, {country}")),
-                _ => None,
-            });
+    let location_name: Option<String> = std::env::var("WAYBAP_LOCATION_NAME").ok().or_else(|| match (&loc.city, &loc.country) {
+        (Some(city), Some(country)) => Some(format!("{city}, {country}")),
+        _ => None,
+    });
 
     let url = format!(
         "https://api.open-meteo.com/v1/forecast\

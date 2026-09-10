@@ -31,11 +31,7 @@ fn load_claude_credentials() -> Option<OAuthCredentials> {
     let oauth = &v["claudeAiOauth"];
     let access_token = oauth["accessToken"].as_str()?.to_string();
     let expires_at = oauth["expiresAt"].as_u64();
-    Some(OAuthCredentials {
-        access_token,
-        expires_at,
-        account_id: None,
-    })
+    Some(OAuthCredentials { access_token, expires_at, account_id: None })
 }
 
 // @NOTE: Codex nests credentials under a "tokens" key. Verified against actual
@@ -57,11 +53,7 @@ fn load_codex_credentials() -> Option<OAuthCredentials> {
     let tokens = &v["tokens"];
     let access_token = tokens["access_token"].as_str()?.to_string();
     let account_id = tokens["account_id"].as_str().map(String::from);
-    Some(OAuthCredentials {
-        access_token,
-        expires_at: None,
-        account_id,
-    })
+    Some(OAuthCredentials { access_token, expires_at: None, account_id })
 }
 
 fn is_token_expired(creds: &OAuthCredentials) -> bool {
@@ -183,10 +175,7 @@ fn fetch_status(client: &Client, url: &str) -> Option<Value> {
 /// Fetch usage data + status for a single provider. Returns a JSON object with
 /// `data`, `token_expired`, `has_credentials`, `status`, `cli_installed` fields.
 fn fetch_provider(
-    client: &Client,
-    creds: Option<OAuthCredentials>,
-    cli_name: &str,
-    status_url: &str,
+    client: &Client, creds: Option<OAuthCredentials>, cli_name: &str, status_url: &str,
     fetch_fn: fn(&Client, &OAuthCredentials) -> FetchResult,
 ) -> Value {
     let cli_installed = cli_on_path(cli_name);
@@ -229,11 +218,7 @@ fn fetch_provider(
 }
 
 pub fn query() -> Option<String> {
-    let client = match Client::builder()
-        .timeout(Duration::from_secs(10))
-        .user_agent("waybap/0.1.0")
-        .build()
-    {
+    let client = match Client::builder().timeout(Duration::from_secs(10)).user_agent("waybap/0.1.0").build() {
         Ok(c) => c,
         Err(e) => {
             eprintln!("Failed to build HTTP client for usage: {e}");
@@ -244,29 +229,17 @@ pub fn query() -> Option<String> {
     // @NOTE: Read existing cache for partial failure carry-forward (D14).
     //   Novel pattern — no other module's query() reads its own cache.
     //   Thread-safe because scheduler runs query() → write sequentially within tick().
-    let prev_cache: Option<Value> = read_to_string(get_cache_fp("usage"))
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok());
+    let prev_cache: Option<Value> = read_to_string(get_cache_fp("usage")).ok().and_then(|s| serde_json::from_str(&s).ok());
 
     let claude_creds = load_claude_credentials();
     let codex_creds = load_codex_credentials();
     let has_claude_creds = claude_creds.is_some();
     let has_codex_creds = codex_creds.is_some();
 
-    let mut claude = fetch_provider(
-        &client,
-        claude_creds,
-        "claude",
-        "https://status.anthropic.com/api/v2/status.json",
-        fetch_usage_claude,
-    );
-    let mut codex = fetch_provider(
-        &client,
-        codex_creds,
-        "codex",
-        "https://status.openai.com/api/v2/status.json",
-        fetch_usage_codex,
-    );
+    let mut claude =
+        fetch_provider(&client, claude_creds, "claude", "https://status.anthropic.com/api/v2/status.json", fetch_usage_claude);
+    let mut codex =
+        fetch_provider(&client, codex_creds, "codex", "https://status.openai.com/api/v2/status.json", fetch_usage_codex);
 
     // Carry forward stale data + data_timestamp on partial failure (D14).
     // @NOTE: token_expired is NOT carried forward — if a server-side revocation (401/403)

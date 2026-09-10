@@ -1,8 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde_json::{Value, json};
 
-use crate::catppuccin;
-use crate::pango;
+use crate::{catppuccin, pango};
 
 struct RateWindow {
     used_percent: f64,
@@ -70,11 +69,7 @@ fn parse_claude_entry(provider: &Value) -> ProviderUsage {
                     // @NOTE: Split on _ and capitalize each word for multi-word model names
                     //   e.g. "oauth_apps" → "Oauth Apps". Pango-escaped at render time (not here)
                     //   to avoid breaking meter label padding calculation.
-                    let display_name = model_name
-                        .split('_')
-                        .map(pango::capitalize)
-                        .collect::<Vec<_>>()
-                        .join(" ");
+                    let display_name = model_name.split('_').map(pango::capitalize).collect::<Vec<_>>().join(" ");
                     model_weekly.push((
                         display_name,
                         RateWindow {
@@ -95,10 +90,7 @@ fn parse_claude_entry(provider: &Value) -> ProviderUsage {
         }
         let used_cents = extra.get("used_credits")?.as_f64()?;
         let limit_cents = extra.get("monthly_limit")?.as_f64()?;
-        Some(Credits::ClaudeExtra {
-            used_usd: used_cents / 100.0,
-            limit_usd: limit_cents / 100.0,
-        })
+        Some(Credits::ClaudeExtra { used_usd: used_cents / 100.0, limit_usd: limit_cents / 100.0 })
     });
 
     ProviderUsage {
@@ -150,17 +142,11 @@ fn parse_codex_entry(provider: &Value) -> ProviderUsage {
             return None;
         }
         // @NOTE: Codex API returns balance as a string, not a number
-        let balance = c
-            .get("balance")?
-            .as_str()
-            .and_then(|s| s.parse::<f64>().ok())
-            .or_else(|| c.get("balance")?.as_f64())?;
+        let balance = c.get("balance")?.as_str().and_then(|s| s.parse::<f64>().ok()).or_else(|| c.get("balance")?.as_f64())?;
         Some(Credits::CodexBalance { balance_usd: balance })
     });
 
-    let plan = data["plan_type"]
-        .as_str()
-        .map(|s| s.split('_').map(pango::capitalize).collect::<Vec<_>>().join(" "));
+    let plan = data["plan_type"].as_str().map(|s| s.split('_').map(pango::capitalize).collect::<Vec<_>>().join(" "));
 
     ProviderUsage {
         session,
@@ -292,18 +278,10 @@ fn format_provider_section(name: &str, usage: &ProviderUsage) -> String {
     // Not configured: no credentials at all
     if !usage.has_credentials {
         if !usage.cli_installed {
-            let url = if name == "Claude" {
-                "claude.ai/cli"
-            } else {
-                "github.com/openai/codex"
-            };
+            let url = if name == "Claude" { "claude.ai/cli" } else { "github.com/openai/codex" };
             lines.push(format!("Not installed — see {url}"));
         } else {
-            let cmd = if name == "Claude" {
-                "claude login"
-            } else {
-                "codex login"
-            };
+            let cmd = if name == "Claude" { "claude login" } else { "codex login" };
             lines.push(format!("Not logged in — run: {cmd}"));
         }
         if let Some(ref status) = usage.status {
@@ -314,14 +292,9 @@ fn format_provider_section(name: &str, usage: &ProviderUsage) -> String {
 
     // Token expired state
     if usage.token_expired {
-        let cmd = if name == "Claude" {
-            "claude login"
-        } else {
-            "codex login"
-        };
+        let cmd = if name == "Claude" { "claude login" } else { "codex login" };
         lines.push(format!("Token expired — run: {cmd}"));
-        if usage.session.is_some() || usage.weekly.is_some() || !usage.model_weekly.is_empty() || usage.credits.is_some()
-        {
+        if usage.session.is_some() || usage.weekly.is_some() || !usage.model_weekly.is_empty() || usage.credits.is_some() {
             let age_suffix = format_data_age(&usage.data_timestamp);
             lines.push(format!("Last data{age_suffix}:"));
         }

@@ -64,15 +64,9 @@ pub fn get_icon(code: i32, is_day: bool) -> &'static str {
     if !is_day && (code == 0 || code == 1) {
         return "🌙";
     }
-    WEATHER_CODES
-        .binary_search_by(|(k, _)| k.cmp(&code))
-        .map(|i| WEATHER_CODES[i].1)
-        .unwrap_or("?")
+    WEATHER_CODES.binary_search_by(|(k, _)| k.cmp(&code)).map(|i| WEATHER_CODES[i].1).unwrap_or("?")
 }
 
 pub fn get_description(code: i32) -> &'static str {
-    WEATHER_DESCRIPTIONS
-        .binary_search_by(|(k, _)| k.cmp(&code))
-        .map(|i| WEATHER_DESCRIPTIONS[i].1)
-        .unwrap_or("Unknown")
+    WEATHER_DESCRIPTIONS.binary_search_by(|(k, _)| k.cmp(&code)).map(|i| WEATHER_DESCRIPTIONS[i].1).unwrap_or("Unknown")
 }

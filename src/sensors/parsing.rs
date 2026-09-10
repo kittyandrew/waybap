@@ -42,39 +42,22 @@ const KNOWN_SENSORS: &[(&str, &str, &str, SensorKind, bool)] = &[
     ("coretemp", "\u{F0EE0} CPU", "coretemp", SensorKind::CpuGpu, false),
     ("amdgpu", "\u{F08AE} GPU AMD", "amdgpu", SensorKind::CpuGpu, false),
     ("nvme", "\u{F02CA} NVMe", "nvme", SensorKind::Nvme, true), // prefix match
-    (
-        "nct6799",
-        "\u{F061A} Motherboard",
-        "nct6799",
-        SensorKind::Motherboard,
-        false,
-    ),
+    ("nct6799", "\u{F061A} Motherboard", "nct6799", SensorKind::Motherboard, false),
     ("spd5118", "\u{F035B} RAM", "spd5118", SensorKind::Ram, false),
 ];
 
 fn sensor_matches(hwmon_name: &str, pattern: &str, prefix: bool) -> bool {
-    if prefix {
-        hwmon_name.starts_with(pattern)
-    } else {
-        hwmon_name == pattern
-    }
+    if prefix { hwmon_name.starts_with(pattern) } else { hwmon_name == pattern }
 }
 
 fn is_known_sensor(hwmon_name: &str) -> bool {
-    KNOWN_SENSORS
-        .iter()
-        .any(|(_, _, pat, _, pfx)| sensor_matches(hwmon_name, pat, *pfx))
+    KNOWN_SENSORS.iter().any(|(_, _, pat, _, pfx)| sensor_matches(hwmon_name, pat, *pfx))
 }
 
 fn render_section(tooltip: &mut String, header: &str, labels: &[(&str, f64)], kind: SensorKind, pad_width: usize) {
     tooltip.push_str(&format!("\n<b>{}</b>\n", crate::pango::escape(header)));
     for &(label, temp) in labels {
-        tooltip.push_str(&format!(
-            "  {: <pad$} {}\n",
-            crate::pango::escape(label),
-            format_temp(temp, kind),
-            pad = pad_width
-        ));
+        tooltip.push_str(&format!("  {: <pad$} {}\n", crate::pango::escape(label), format_temp(temp, kind), pad = pad_width));
     }
 }
 
@@ -95,10 +78,7 @@ pub fn parse_data(raw_data: Value) -> Result<String, Box<dyn std::error::Error>>
             let color = temp_color(t, SensorKind::CpuGpu);
             format!("<span size=\"x-small\">\u{F050F} <span foreground=\"{color}\">{t:.0}°</span></span>")
         }
-        None => format!(
-            "<span size=\"x-small\">\u{F050F} <span foreground=\"{}\">--°</span></span>",
-            catppuccin::MUTED
-        ),
+        None => format!("<span size=\"x-small\">\u{F050F} <span foreground=\"{}\">--°</span></span>", catppuccin::MUTED),
     };
 
     // Tooltip: rich sensor dashboard
@@ -117,11 +97,7 @@ pub fn parse_data(raw_data: Value) -> Result<String, Box<dyn std::error::Error>>
 
     // Render known sensor categories in defined order
     for &(_, display_title, pattern, kind, prefix) in KNOWN_SENSORS {
-        let groups: Vec<_> = data
-            .sensors
-            .iter()
-            .filter(|g| sensor_matches(&g.name, pattern, prefix))
-            .collect();
+        let groups: Vec<_> = data.sensors.iter().filter(|g| sensor_matches(&g.name, pattern, prefix)).collect();
         if groups.is_empty() {
             continue;
         }
@@ -131,20 +107,11 @@ pub fn parse_data(raw_data: Value) -> Result<String, Box<dyn std::error::Error>>
             render_section(&mut tooltip, display_title, &labels, kind, pad);
         } else if pattern == "spd5118" {
             // RAM DIMMs: single header, one line per DIMM
-            let labels: Vec<_> = groups
-                .iter()
-                .enumerate()
-                .filter_map(|(i, g)| g.readings.first().map(|r| (i, r.temp)))
-                .collect();
+            let labels: Vec<_> = groups.iter().enumerate().filter_map(|(i, g)| g.readings.first().map(|r| (i, r.temp))).collect();
             tooltip.push_str(&format!("\n<b>{display_title}</b>\n"));
             for (i, temp) in &labels {
                 let dimm_label = format!("DIMM {}", i + 1);
-                tooltip.push_str(&format!(
-                    "  {: <pad$} {}\n",
-                    dimm_label,
-                    format_temp(*temp, kind),
-                    pad = pad,
-                ));
+                tooltip.push_str(&format!("  {: <pad$} {}\n", dimm_label, format_temp(*temp, kind), pad = pad,));
             }
         } else {
             // Multiple devices with same name: numbered headers

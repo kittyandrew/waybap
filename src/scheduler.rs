@@ -3,11 +3,7 @@
 //! https://github.com/BlackDex/job_scheduler/blob/master/src/lib.rs
 
 use chrono::{DateTime, Utc};
-use std::fs;
-use std::fs::File;
-use std::io::prelude::*;
-
-use std::thread;
+use std::{fs, fs::File, io::prelude::*, thread};
 
 pub fn get_cache_fp(name: &str) -> String {
     let home_dir = match std::env::var("HOME") {
@@ -50,13 +46,7 @@ impl Job {
         let cache_fp = get_cache_fp(name);
         let last_run = get_last_modified_or_default(&cache_fp);
 
-        Job {
-            name: name.to_string(),
-            interval,
-            run: Box::new(run),
-            last_run,
-            retries: 3,
-        }
+        Job { name: name.to_string(), interval, run: Box::new(run), last_run, retries: 3 }
     }
 
     fn tick(&mut self) {
