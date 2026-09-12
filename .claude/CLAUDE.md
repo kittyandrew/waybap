@@ -10,7 +10,7 @@ src/
   catppuccin.rs        Catppuccin Frappe color palette constants (single source of truth)
   pango.rs             Shared Pango/XML escape, capitalize, and meter bar utilities
   server.rs            tiny_http server, routes: /api/weather, /api/crypto, /api/sensors, /api/usage
-  scheduler.rs         Job scheduler: periodic fetch with retries, atomic cache writes (tmp + rename)
+  scheduler.rs         Per-module worker loop: periodic fetch with retries, atomic cache writes (PID tmp + rename)
   crypto/
     mod.rs             Re-exports query + parse_data
     query.rs           CoinGecko API client (top 10 coins by market cap)
@@ -23,23 +23,12 @@ src/
     utils.rs           Helpers: wind direction, conditions line builder
   sensors/
     mod.rs             Re-exports query + parse_data; defines SensorReading/SensorGroup/SensorData structs
-    query.rs           Read /sys/class/hwmon + nvidia-smi, return JSON
+    query.rs           Enumerate hwmon inputs; one cached Nvidia worker with observation expiry
     parsing.rs         Format sensor temps as color-coded Pango markup
   usage/
     mod.rs             Re-exports query + parse_data
     query.rs           Claude + Codex OAuth credential loading, usage API fetch, status pages
     parsing.rs         Format usage data as color-coded Pango markup with meter bars
-```
-
-## Specs
-
-**Important**: Always keep this index up to date when creating, renaming, or deleting files in `docs/`.
-
-Single Allium specification covers the full system. Read `docs/specs/waybap.allium` before making changes to scheduling, formatting, color coding, or API behavior — it captures the design decisions and constraints. Run `allium check docs/specs/waybap.allium` to validate.
-
-```
-docs/specs/
-  waybap.allium   Full system spec: scheduler, server, all 4 data modules, display formatting
 ```
 
 ## Build & test
@@ -56,7 +45,6 @@ docs/specs/
   - `nix develop -c cargo clippy --all-targets --all-features -- -D warnings`
   - `nix develop -c cargo test --all-targets --all-features --locked`
   - `nix develop -c cargo build --all-targets --all-features --locked`
-- Project-specific spec check: `allium check docs/specs/waybap.allium`.
 - `cargo run -- serve [address]` starts the daemon (default: 127.0.0.1:6969).
 - `cargo run -- test <weather|crypto|sensors|usage> [--cache]` runs a full query+parse cycle for testing. Use `--cache` to test parsing against cached data without network.
 - Apply `rustfmt.toml` before formatting: 131 columns for lines and width heuristics, with compressed function parameters.

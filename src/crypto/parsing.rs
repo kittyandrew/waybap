@@ -2,7 +2,7 @@ use serde::Deserialize;
 use serde_aux::prelude::*;
 use serde_json::{Value, json, value::from_value};
 
-use crate::catppuccin;
+use crate::{catppuccin, pango};
 
 #[derive(Deserialize, Debug)]
 struct Coin {
@@ -17,37 +17,31 @@ struct Coin {
 
 fn display_change(change: f64) -> (&'static str, f64) {
     let rounded = (change * 10.0).round() / 10.0;
-    if rounded == 0.0 {
-        (catppuccin::MUTED, 0.0)
-    } else if rounded < 0.0 {
-        (catppuccin::RED, rounded)
-    } else {
-        (catppuccin::GREEN, rounded)
+    match rounded {
+        0.0 => (catppuccin::MUTED, 0.0), // Render (effectively) zero changes as neutral.
+        ..0.0 => (catppuccin::RED, rounded),
+        _ => (catppuccin::GREEN, rounded),
     }
 }
 
 pub fn parse_data(raw_crypto: Value) -> Result<String, Box<dyn std::error::Error>> {
     let coins = from_value::<Vec<Coin>>(raw_crypto)?;
 
-    // @NOTE: You can't put 'class' on the span here for some reason, but you
-    //        can change a bunch of things directly with this special subset
-    //        of html (bruh): https://docs.gtk.org/Pango/pango_markup.html
+    // Pango supports span attributes, not CSS classes.
+    // https://docs.gtk.org/Pango/pango_markup.html
     let mut text = format!("<span size=\"large\" foreground=\"{}\"> 󰠓</span>\n", catppuccin::BITCOIN_ORANGE);
     let mut tooltip = "<span size=\"xx-large\">Crypto</span>\n".to_string();
-    let max_name_len = coins.iter().map(|c| crate::pango::escape(&c.name).len()).max().unwrap_or(0);
+    let max_name_len = coins.iter().map(|c| c.name.chars().count()).max().unwrap_or(0);
     for coin in &coins {
-        let change = coin.change.unwrap_or(0.0);
-        let (color, displayed_change) = display_change(change);
-        // @NOTE: Store bitcoin price to display in the sidebar.
+        let (color, displayed_change) = display_change(coin.change.unwrap_or(0.0));
         if coin.symbol == "btc" {
             text = format!("{text}<span foreground=\"{color}\" size=\"x-small\">{price:.1}k</span>", price = coin.price / 1000.0);
         }
-        let coin_name = format!("  <b>{name}</b>:", name = crate::pango::escape(&coin.name));
-        let price_value = format!(
-            "$<span foreground=\"{color}\">{price:.precision$}</span>",
-            price = coin.price,
-            precision = 7_usize.saturating_sub(format!("${price}", price = coin.price.round()).len()),
-        );
+        // Measure names before escaping so &amp; takes the same space as &.
+        let padding = " ".repeat(max_name_len - coin.name.chars().count());
+        let coin_name = pango::escape(&coin.name);
+        let precision = 7_usize.saturating_sub(format!("${}", coin.price.round()).len());
+        let price = format!("{:.precision$}", coin.price);
         let change_text = match coin.change {
             Some(_) => format!(
                 "<span foreground=\"{color}\">{space}{displayed_change:.1}%</span>",
@@ -55,17 +49,10 @@ pub fn parse_data(raw_crypto: Value) -> Result<String, Box<dyn std::error::Error
             ),
             None => format!("<span foreground=\"{}\"> N/A</span>", catppuccin::MUTED),
         };
-        tooltip += format!(
-            "{coin_name: <cname_len$}{price_value: <45}{change_text}\n",
-            cname_len = max_name_len + 10 + 3, // Adapt to coin name + markdown formatting + 3.
-        )
-        .as_ref();
+        tooltip += &format!("  <b>{coin_name}</b>:{padding}   $<span foreground=\"{color}\">{price:<10}</span>{change_text}\n");
     }
 
-    Ok(serde_json::to_string(&json!({
-        "text": text,
-        "tooltip": format!("<tt>{tooltip}</tt>"),
-    }))?)
+    Ok(serde_json::to_string(&json!({"text": text, "tooltip": format!("<tt>{tooltip}</tt>")}))?)
 }
 
 #[cfg(test)]
@@ -76,18 +63,8 @@ mod tests {
     #[test]
     fn renders_btc_price_even_when_btc_is_not_first() {
         let rendered = parse_data(json!([
-            {
-                "name": "Ethereum",
-                "symbol": "eth",
-                "current_price": 3500.0,
-                "price_change_percentage_24h": 1.2
-            },
-            {
-                "name": "Bitcoin",
-                "symbol": "btc",
-                "current_price": 101000.0,
-                "price_change_percentage_24h": -0.5
-            }
+            {"name": "Ethereum", "symbol": "eth", "current_price": 3500.0, "price_change_percentage_24h": 1.2},
+            {"name": "Bitcoin", "symbol": "btc", "current_price": 101000.0, "price_change_percentage_24h": -0.5}
         ]))
         .expect("crypto data renders");
 
@@ -98,12 +75,9 @@ mod tests {
 
     #[test]
     fn renders_display_rounded_zero_change_as_muted_zero() {
-        let rendered = parse_data(json!([{
-            "name": "Bitcoin",
-            "symbol": "btc",
-            "current_price": 101000.0,
-            "price_change_percentage_24h": -0.04
-        }]))
+        let rendered = parse_data(json!([
+            {"name": "Bitcoin", "symbol": "btc", "current_price": 101000.0, "price_change_percentage_24h": -0.04}
+        ]))
         .expect("crypto data renders");
 
         assert!(!rendered.contains("-0.0%"));

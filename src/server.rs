@@ -8,29 +8,22 @@ fn serve_404(request: Request) -> io::Result<()> {
 }
 
 fn serve_json(request: Request, bytes: &[u8]) -> io::Result<()> {
-    let content_type_json = "application/json; charset=utf-8";
-    let content_type_header = Header::from_bytes("Content-Type", content_type_json)
+    let content_type_header = Header::from_bytes("Content-Type", "application/json; charset=utf-8")
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid Content-Type header"))?;
     request.respond(Response::from_data(bytes).with_header(content_type_header))
 }
 
 fn serve_error_json(request: Request, err_message: String) -> io::Result<()> {
-    let err_res = serde_json::json!({
-        "text": "⛓️‍💥",
-        "tooltip": format!("<tt>{}</tt>", pango::escape(&err_message))
-    });
-    serve_json(request, err_res.to_string().as_bytes())
+    let err_res = serde_json::json!({"text": "⛓️‍💥", "tooltip": format!("<tt>{}</tt>", pango::escape(&err_message))});
+    serve_json(request, err_res.to_string().as_bytes()) // Give Waybar the usual JSON so it can show the error in a tooltip.
 }
 
-/// Shared handler: read cache file → parse JSON → run module parser → serve result.
-/// Consolidates the identical read-cache/parse/serve pattern across all API routes (D18).
 fn serve_cached_api<F>(request: Request, name: &str, parse: F) -> io::Result<()>
 where
     F: FnOnce(serde_json::Value) -> Result<String, Box<dyn std::error::Error>>,
 {
     let display = pango::capitalize(name);
-    let cache_fp = get_cache_fp(name);
-    let raw_data = match read_to_string(cache_fp) {
+    let raw_data = match read_to_string(get_cache_fp(name)) {
         Ok(s) => s,
         Err(err) => return serve_error_json(request, format!("{display} data not available: {err}")),
     };
@@ -58,18 +51,13 @@ fn serve_request(request: Request) -> io::Result<()> {
 }
 
 pub fn start(address: &str) -> Result<(), ()> {
-    let server = Server::http(address).map_err(|err| {
-        eprintln!("ERROR: could not start HTTP server at {address}: {err}");
-    })?;
+    let server = Server::http(address).map_err(|err| eprintln!("ERROR: could not start HTTP server at {address}: {err}"))?;
 
     println!("INFO: listening at http://{address}/");
 
     for request in server.incoming_requests() {
-        serve_request(request)
-            .map_err(|err| {
-                eprintln!("ERROR: could not serve the response: {err}");
-            })
-            .ok(); // <- don't stop on errors, keep serving
+        // Keep serving even if one response fails.
+        serve_request(request).map_err(|err| eprintln!("ERROR: could not serve the response: {err}")).ok();
     }
 
     eprintln!("ERROR: the server socket has shutdown");

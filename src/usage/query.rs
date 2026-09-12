@@ -14,11 +14,7 @@ struct OAuthCredentials {
 
 fn load_claude_credentials() -> Option<OAuthCredentials> {
     let home = std::env::var("HOME").ok()?;
-    let path = format!("{home}/.claude/.credentials.json");
-    let text = match read_to_string(&path) {
-        Ok(t) => t,
-        Err(_) => return None, // Not installed or not logged in
-    };
+    let text = read_to_string(format!("{home}/.claude/.credentials.json")).ok()?;
     let v: Value = match serde_json::from_str(&text) {
         Ok(v) => v,
         Err(e) => {
@@ -26,23 +22,15 @@ fn load_claude_credentials() -> Option<OAuthCredentials> {
             return None;
         }
     };
-    // @NOTE: Claude Code nests credentials under "claudeAiOauth" (verified on this machine).
-    //   CodexBar's source assumed a flat structure — actual file wraps it.
     let oauth = &v["claudeAiOauth"];
     let access_token = oauth["accessToken"].as_str()?.to_string();
     let expires_at = oauth["expiresAt"].as_u64();
     Some(OAuthCredentials { access_token, expires_at, account_id: None })
 }
 
-// @NOTE: Codex nests credentials under a "tokens" key. Verified against actual
-//   ~/.codex/auth.json on this Linux machine — format matches CodexBar's macOS source.
 fn load_codex_credentials() -> Option<OAuthCredentials> {
     let home = std::env::var("HOME").ok()?;
-    let path = format!("{home}/.codex/auth.json");
-    let text = match read_to_string(&path) {
-        Ok(t) => t,
-        Err(_) => return None,
-    };
+    let text = read_to_string(format!("{home}/.codex/auth.json")).ok()?;
     let v: Value = match serde_json::from_str(&text) {
         Ok(v) => v,
         Err(e) => {
@@ -58,11 +46,8 @@ fn load_codex_credentials() -> Option<OAuthCredentials> {
 
 fn is_token_expired(creds: &OAuthCredentials) -> bool {
     match creds.expires_at {
-        Some(expires_ms) => {
-            let now_ms = Utc::now().timestamp_millis().max(0) as u64;
-            now_ms >= expires_ms
-        }
-        None => false, // Codex has no expiry field — treat as valid
+        Some(expires_ms) => Utc::now().timestamp_millis().max(0) as u64 >= expires_ms,
+        None => false, // Codex has no expiry field, so let the API decide if the token is valid.
     }
 }
 
@@ -72,19 +57,15 @@ fn cli_on_path(name: &str) -> bool {
         Ok(p) => p,
         Err(_) => return false,
     };
-    std::env::split_paths(&path_var).any(|dir| {
-        let path = dir.join(name);
-        path.is_file()
-    })
+    std::env::split_paths(&path_var).any(|dir| dir.join(name).is_file())
 }
 
 enum FetchResult {
     Ok(Value),
-    TokenExpired, // 401/403 from API — server-side expiry, revocation, or disabled access
+    TokenExpired, // API 401/403: expiry, revocation, or disabled access
     Failed,       // network error, 5xx, etc.
 }
 
-/// Send an authenticated GET request and parse JSON response. Shared by Claude and Codex fetchers.
 fn fetch_usage(req: reqwest::blocking::RequestBuilder, label: &str) -> FetchResult {
     let response = match req.send() {
         Ok(r) => r,
@@ -96,7 +77,7 @@ fn fetch_usage(req: reqwest::blocking::RequestBuilder, label: &str) -> FetchResu
     let status = response.status();
     if matches!(status.as_u16(), 401 | 403) {
         eprintln!("{label} usage API returned {status} — token expired or access revoked");
-        return FetchResult::TokenExpired;
+        return FetchResult::TokenExpired; // Ask the user to log in again rather than treating this as a temporary outage.
     }
     if !status.is_success() {
         eprintln!("{label} usage API error: HTTP {status}");
@@ -123,8 +104,7 @@ fn fetch_usage_claude(client: &Client, creds: &OAuthCredentials) -> FetchResult 
         .get("https://api.anthropic.com/api/oauth/usage")
         .header("Authorization", format!("Bearer {}", creds.access_token))
         .header("Accept", "application/json")
-        // @WARNING: Beta header will eventually break when Anthropic graduates OAuth out of beta.
-        //   Monitor for 4xx errors or missing data after Anthropic API updates.
+        // @NOTE: If requests break after an API update, check this OAuth beta header. - Sep 12, 2026
         .header("anthropic-beta", "oauth-2025-04-20");
     fetch_usage(req, "Claude")
 }
@@ -166,45 +146,25 @@ fn fetch_status(client: &Client, url: &str) -> Option<Value> {
             return None;
         }
     };
-    Some(json!({
-        "indicator": v["status"]["indicator"],
-        "description": v["status"]["description"],
-    }))
+    Some(json!({"indicator": v["status"]["indicator"], "description": v["status"]["description"]}))
 }
 
-/// Fetch usage data + status for a single provider. Returns a JSON object with
-/// `data`, `token_expired`, `has_credentials`, `status`, `cli_installed` fields.
 fn fetch_provider(
     client: &Client, creds: Option<OAuthCredentials>, cli_name: &str, status_url: &str,
     fetch_fn: fn(&Client, &OAuthCredentials) -> FetchResult,
 ) -> Value {
     let cli_installed = cli_on_path(cli_name);
-    let status = fetch_status(client, status_url);
+    let status = fetch_status(client, status_url); // Keep fetching usage even if the status page is down.
     let has_credentials = creds.is_some();
 
-    let creds = match creds {
-        Some(c) => c,
-        None => {
-            return json!({
-                "data": null,
-                "data_timestamp": null,
-                "token_expired": false,
-                "has_credentials": false,
-                "status": status,
-                "cli_installed": cli_installed,
-            });
-        }
-    };
-
-    let locally_expired = is_token_expired(&creds);
-    let (data, token_expired, data_timestamp) = if locally_expired {
-        (None::<Value>, true, None::<String>)
-    } else {
-        match fetch_fn(client, &creds) {
+    let (data, token_expired, data_timestamp) = match creds {
+        None => (None, false, None),
+        Some(creds) if is_token_expired(&creds) => (None, true, None), // Don't send a request with a token we know has expired.
+        Some(creds) => match fetch_fn(client, &creds) {
             FetchResult::Ok(v) => (Some(v), false, Some(Utc::now().to_rfc3339())),
             FetchResult::TokenExpired => (None, true, None),
             FetchResult::Failed => (None, false, None),
-        }
+        },
     };
 
     json!({
@@ -226,56 +186,36 @@ pub fn query() -> Option<String> {
         }
     };
 
-    // @NOTE: Read existing cache for partial failure carry-forward (D14).
-    //   Novel pattern — no other module's query() reads its own cache.
-    //   Thread-safe because scheduler runs query() → write sequentially within tick().
     let prev_cache: Option<Value> = read_to_string(get_cache_fp("usage")).ok().and_then(|s| serde_json::from_str(&s).ok());
 
     let claude_creds = load_claude_credentials();
+    let claude_status_url = "https://status.anthropic.com/api/v2/status.json";
+    let mut claude = fetch_provider(&client, claude_creds, "claude", claude_status_url, fetch_usage_claude);
+
     let codex_creds = load_codex_credentials();
-    let has_claude_creds = claude_creds.is_some();
-    let has_codex_creds = codex_creds.is_some();
+    let codex_status_url = "https://status.openai.com/api/v2/status.json";
+    let mut codex = fetch_provider(&client, codex_creds, "codex", codex_status_url, fetch_usage_codex);
 
-    let mut claude =
-        fetch_provider(&client, claude_creds, "claude", "https://status.anthropic.com/api/v2/status.json", fetch_usage_claude);
-    let mut codex =
-        fetch_provider(&client, codex_creds, "codex", "https://status.openai.com/api/v2/status.json", fetch_usage_codex);
-
-    // Carry forward stale data + data_timestamp on partial failure (D14).
-    // @NOTE: token_expired is NOT carried forward — if a server-side revocation (401/403)
-    //   is followed by a network failure, the stale data reappears without the "token expired"
-    //   warning until the next successful fetch or local expiry check. Accepted trade-off:
-    //   self-heals within 120s and avoids complexity of merging token states.
-    if claude["data"].is_null()
-        && has_claude_creds
-        && let Some(ref prev) = prev_cache
-        && !prev["claude"]["data"].is_null()
-    {
-        claude["data"] = prev["claude"]["data"].clone();
-        claude["data_timestamp"] = prev["claude"]["data_timestamp"].clone();
-    }
-    if codex["data"].is_null()
-        && has_codex_creds
-        && let Some(ref prev) = prev_cache
-        && !prev["codex"]["data"].is_null()
-    {
-        codex["data"] = prev["codex"]["data"].clone();
-        codex["data_timestamp"] = prev["codex"]["data_timestamp"].clone();
+    // Keep the last usage data and its timestamp if a provider's request fails.
+    // @NOTE: Don't keep an old token_expired warning after the user logs in again. A network failure also clears
+    // that warning, but the old timestamp still shows that the data hasn't been refreshed. - Sep 12, 2026
+    for (name, provider) in [("claude", &mut claude), ("codex", &mut codex)] {
+        if provider["data"].is_null()
+            && provider["has_credentials"] == true
+            && let Some(ref prev) = prev_cache
+            && !prev[name]["data"].is_null()
+        {
+            provider["data"] = prev[name]["data"].clone();
+            provider["data_timestamp"] = prev[name]["data_timestamp"].clone();
+        }
     }
 
-    // @NOTE: Return Some() even when both providers are unconfigured — parsing handles
-    //   the "not configured" display. None is only for transient failures worth retrying.
+    // Show login errors even if we've never fetched usage successfully.
     let has_any_data = !claude["data"].is_null() || !codex["data"].is_null();
-    let has_any_creds = has_claude_creds || has_codex_creds;
-    if has_any_creds && !has_any_data {
-        return None;
+    let has_any_creds = claude["has_credentials"] == true || codex["has_credentials"] == true;
+    if has_any_creds && !has_any_data && claude["token_expired"] != true && codex["token_expired"] != true {
+        return None; // No usage data or login warning to show, so let the scheduler retry.
     }
 
-    let result = json!({
-        "timestamp": Utc::now().to_rfc3339(),
-        "claude": claude,
-        "codex": codex,
-    });
-
-    Some(result.to_string())
+    Some(json!({"timestamp": Utc::now().to_rfc3339(), "claude": claude, "codex": codex}).to_string())
 }

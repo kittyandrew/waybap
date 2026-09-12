@@ -13,10 +13,7 @@ struct Location {
 static LOCATION: OnceLock<Location> = OnceLock::new();
 
 fn try_resolve(client: &Client) -> Option<Location> {
-    // Try env vars first
-    let lat_env = std::env::var("WAYBAP_LAT").ok();
-    let lon_env = std::env::var("WAYBAP_LON").ok();
-    match (lat_env, lon_env) {
+    match (std::env::var("WAYBAP_LAT").ok(), std::env::var("WAYBAP_LON").ok()) {
         (Some(lat_s), Some(lon_s)) => {
             let lat: f64 = match lat_s.parse() {
                 Ok(v) => v,
@@ -40,12 +37,12 @@ fn try_resolve(client: &Client) -> Option<Location> {
         }
         (Some(_), None) | (None, Some(_)) => {
             eprintln!("WAYBAP_LAT and WAYBAP_LON must both be set, ignoring partial config");
-            return None;
+            return None; // Don't silently use the IP's location when only one coordinate is set.
         }
         _ => {}
     }
 
-    // Fallback: IP geolocation (uses shared client — D16)
+    // Use the IP's location if no coordinates are set.
     let response = match client.get("https://ipwho.is/").send() {
         Ok(r) => r,
         Err(e) => {
@@ -68,8 +65,7 @@ fn try_resolve(client: &Client) -> Option<Location> {
         }
     };
     if geo["success"].as_bool() != Some(true) {
-        let msg = geo["message"].as_str().unwrap_or("unknown error");
-        eprintln!("Geolocation failed: {msg}");
+        eprintln!("Geolocation failed: {}", geo["message"].as_str().unwrap_or("unknown error"));
         return None;
     }
     let lat = geo["latitude"].as_f64()?;
@@ -80,20 +76,15 @@ fn try_resolve(client: &Client) -> Option<Location> {
 }
 
 fn resolve_location(client: &Client) -> Option<&'static Location> {
-    // Return cached location if available
     if let Some(loc) = LOCATION.get() {
         return Some(loc);
     }
-    // Try to resolve; only cache on success so failures retry next cycle
-    let loc = try_resolve(client)?;
+    let loc = try_resolve(client)?; // Only cache successful lookups so we can retry failures next time.
     let _ = LOCATION.set(loc);
     LOCATION.get()
 }
 
 pub fn query() -> Option<String> {
-    // @NOTE: Single client for all requests in this query cycle (D16).
-    //   Uses 10s timeout for both geolocation and weather API — the geolocation
-    //   endpoint is fast anyway; the previous 3s timeout was defensive, not load-bearing.
     let client = match Client::builder().timeout(Duration::from_secs(10)).user_agent("waybap/0.1.0").build() {
         Ok(c) => c,
         Err(e) => {
@@ -131,7 +122,6 @@ pub fn query() -> Option<String> {
                 }
             };
             if !status.is_success() {
-                // Try to extract the "reason" field from error responses (e.g. HTTP 400)
                 let reason = serde_json::from_str::<Value>(&text)
                     .ok()
                     .and_then(|v| v["reason"].as_str().map(String::from))
@@ -147,15 +137,10 @@ pub fn query() -> Option<String> {
                 }
             };
             if data["error"].as_bool() == Some(true) {
-                let reason = data["reason"].as_str().unwrap_or("unknown error");
-                eprintln!("Open-Meteo API error: {reason}");
+                eprintln!("Open-Meteo API error: {}", data["reason"].as_str().unwrap_or("unknown error"));
                 return None;
             }
-            let wrapped = json!({
-                "location_name": location_name,
-                "data": data,
-            });
-            Some(wrapped.to_string())
+            Some(json!({"location_name": location_name, "data": data}).to_string())
         }
         Err(err) => {
             eprintln!("Open-Meteo request failed: {err}!");

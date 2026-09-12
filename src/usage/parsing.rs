@@ -5,12 +5,12 @@ use crate::{catppuccin, pango};
 
 struct RateWindow {
     used_percent: f64,
-    resets_at: Option<String>, // ISO 8601 UTC
+    resets_at: Option<DateTime<Utc>>,
 }
 
 enum Credits {
     ClaudeExtra { used_usd: f64, limit_usd: f64 },
-    CodexBalance { balance_usd: f64 },
+    CodexBalance { balance: String },
 }
 
 struct ProviderStatus {
@@ -21,11 +21,11 @@ struct ProviderStatus {
 struct ProviderUsage {
     session: Option<RateWindow>,
     weekly: Option<RateWindow>,
-    model_weekly: Vec<(String, RateWindow)>,
+    extra_windows: Vec<(String, RateWindow)>,
     credits: Option<Credits>,
     status: Option<ProviderStatus>,
-    plan: Option<String>,           // Codex only; Claude API has no plan field
-    data_timestamp: Option<String>, // ISO 8601 UTC — when this provider's data was last fetched
+    plan: Option<String>,                  // Codex only (Claude's API has no plan field)
+    data_timestamp: Option<DateTime<Utc>>, // when this provider's data was last fetched
     token_expired: bool,
     has_credentials: bool,
     cli_installed: bool,
@@ -37,56 +37,54 @@ fn parse_status(status: &Value) -> Option<ProviderStatus> {
     Some(ProviderStatus { indicator, description })
 }
 
-// @NOTE: Actual API uses snake_case field names, not camelCase as CodexBar's Swift source
-//   suggested. Verified against live API responses on Mar 8, 2026.
 fn parse_claude_entry(provider: &Value) -> ProviderUsage {
     let data = &provider["data"];
-    let token_expired = provider["token_expired"].as_bool().unwrap_or(false);
-    let has_credentials = provider["has_credentials"].as_bool().unwrap_or(false);
-    let cli_installed = provider["cli_installed"].as_bool().unwrap_or(false);
-    let data_timestamp = provider["data_timestamp"].as_str().map(String::from);
-    let status = parse_status(&provider["status"]);
+    let data_timestamp =
+        provider["data_timestamp"].as_str().and_then(|s| DateTime::parse_from_rfc3339(s).ok()).map(|dt| dt.to_utc());
 
-    let session = data["five_hour"].as_object().map(|w| RateWindow {
-        used_percent: w.get("utilization").and_then(|v| v.as_f64()).unwrap_or(0.0),
-        resets_at: w.get("resets_at").and_then(|v| v.as_str()).map(String::from),
+    let session = data["five_hour"]["utilization"].as_f64().map(|used_percent| RateWindow {
+        used_percent,
+        resets_at: data["five_hour"]["resets_at"]
+            .as_str()
+            .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+            .map(|dt| dt.to_utc()),
     });
 
-    let weekly = data["seven_day"].as_object().map(|w| RateWindow {
-        used_percent: w.get("utilization").and_then(|v| v.as_f64()).unwrap_or(0.0),
-        resets_at: w.get("resets_at").and_then(|v| v.as_str()).map(String::from),
+    let weekly = data["seven_day"]["utilization"].as_f64().map(|used_percent| RateWindow {
+        used_percent,
+        resets_at: data["seven_day"]["resets_at"]
+            .as_str()
+            .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+            .map(|dt| dt.to_utc()),
     });
 
-    // @NOTE: Model-specific weekly windows — iterate keys matching seven_day_* that
-    //   aren't "seven_day" itself. Strip "seven_day_" prefix for display label.
-    //   e.g. "seven_day_sonnet" → "Sonnet", "seven_day_opus" → "Opus"
-    let mut model_weekly = Vec::new();
+    // Include any extra weekly limits, such as limits for individual models.
+    let mut extra_windows = Vec::new();
     if let Some(obj) = data.as_object() {
         for (key, val) in obj {
-            if key.starts_with("seven_day_") && !val.is_null() {
-                let model_name = key.strip_prefix("seven_day_").unwrap_or(key);
-                if let Some(w) = val.as_object() {
-                    // @NOTE: Split on _ and capitalize each word for multi-word model names
-                    //   e.g. "oauth_apps" → "Oauth Apps". Pango-escaped at render time (not here)
-                    //   to avoid breaking meter label padding calculation.
-                    let display_name = model_name.split('_').map(pango::capitalize).collect::<Vec<_>>().join(" ");
-                    model_weekly.push((
-                        display_name,
-                        RateWindow {
-                            used_percent: w.get("utilization").and_then(|v| v.as_f64()).unwrap_or(0.0),
-                            resets_at: w.get("resets_at").and_then(|v| v.as_str()).map(String::from),
-                        },
-                    ));
-                }
+            if let Some(model_name) = key.strip_prefix("seven_day_")
+                && let Some(used_percent) = val["utilization"].as_f64()
+            {
+                // Leave labels unescaped until padding (oauth_apps becomes Oauth Apps).
+                let display_name = model_name.split('_').map(pango::capitalize).collect::<Vec<_>>().join(" ");
+                extra_windows.push((
+                    format!("{display_name} weekly:"),
+                    RateWindow {
+                        used_percent,
+                        resets_at: val["resets_at"]
+                            .as_str()
+                            .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+                            .map(|dt| dt.to_utc()),
+                    },
+                ));
             }
         }
     }
 
-    // Claude Extra credits — API returns cents, normalize to USD
+    // Convert the API's cents to dollars for display.
     let credits = data["extra_usage"].as_object().and_then(|extra| {
-        let is_enabled = extra.get("is_enabled")?.as_bool()?;
-        if !is_enabled {
-            return None;
+        if !extra.get("is_enabled")?.as_bool()? {
+            return None; // Hide the spending row when extra usage is disabled.
         }
         let used_cents = extra.get("used_credits")?.as_f64()?;
         let limit_cents = extra.get("monthly_limit")?.as_f64()?;
@@ -96,157 +94,112 @@ fn parse_claude_entry(provider: &Value) -> ProviderUsage {
     ProviderUsage {
         session,
         weekly,
-        model_weekly,
+        extra_windows,
         credits,
-        status,
+        status: parse_status(&provider["status"]),
         plan: None,
         data_timestamp,
-        token_expired,
-        has_credentials,
-        cli_installed,
+        token_expired: provider["token_expired"].as_bool().unwrap_or(false),
+        has_credentials: provider["has_credentials"].as_bool().unwrap_or(false),
+        cli_installed: provider["cli_installed"].as_bool().unwrap_or(false),
     }
 }
 
 fn parse_codex_entry(provider: &Value) -> ProviderUsage {
     let data = &provider["data"];
-    let token_expired = provider["token_expired"].as_bool().unwrap_or(false);
-    let has_credentials = provider["has_credentials"].as_bool().unwrap_or(false);
-    let cli_installed = provider["cli_installed"].as_bool().unwrap_or(false);
-    let data_timestamp = provider["data_timestamp"].as_str().map(String::from);
-    let status = parse_status(&provider["status"]);
+    let data_timestamp =
+        provider["data_timestamp"].as_str().and_then(|s| DateTime::parse_from_rfc3339(s).ok()).map(|dt| dt.to_utc());
 
     let rate_limit = &data["rate_limit"];
 
-    let session = rate_limit["primary_window"].as_object().map(|w| RateWindow {
-        used_percent: w.get("used_percent").and_then(|v| v.as_f64()).unwrap_or(0.0),
-        // @NOTE: Codex uses unix seconds — convert to ISO 8601 for consistent countdown handling
-        resets_at: w
-            .get("reset_at")
-            .and_then(|v| v.as_i64())
-            .and_then(|ts| DateTime::from_timestamp(ts, 0))
-            .map(|dt| dt.to_rfc3339()),
-    });
-
-    let weekly = rate_limit["secondary_window"].as_object().map(|w| RateWindow {
-        used_percent: w.get("used_percent").and_then(|v| v.as_f64()).unwrap_or(0.0),
-        resets_at: w
-            .get("reset_at")
-            .and_then(|v| v.as_i64())
-            .and_then(|ts| DateTime::from_timestamp(ts, 0))
-            .map(|dt| dt.to_rfc3339()),
-    });
-
-    let credits = data["credits"].as_object().and_then(|c| {
-        let has_credits = c.get("has_credits")?.as_bool()?;
-        if !has_credits {
-            return None;
+    let (mut session, mut weekly) = (None, None);
+    let mut extra_windows = Vec::new();
+    // @NOTE: The weekly window can be in either slot, so identify it by its duration. - Sep 12, 2026
+    for key in ["primary_window", "secondary_window"] {
+        let w = &rate_limit[key];
+        let Some(used_percent) = w["used_percent"].as_f64() else { continue }; // Missing data doesn't mean 0% used.
+        let window = RateWindow {
+            used_percent,
+            resets_at: w["reset_at"].as_i64().and_then(|ts| DateTime::from_timestamp(ts, 0)), // Unix seconds
+        };
+        match w["limit_window_seconds"].as_i64() {
+            Some(604800) => weekly = Some(window),
+            Some(18000) => session = Some(window),
+            duration => {
+                let label = match duration {
+                    Some(s) if s > 0 && s % 86400 == 0 => format!("Rate ({}d):", s / 86400),
+                    Some(s) if s > 0 && s % 3600 == 0 => format!("Rate ({}h):", s / 3600),
+                    Some(s) if s > 0 => format!("Rate ({s}s):"),
+                    _ => "Rate:".to_string(),
+                };
+                extra_windows.push((label, window)); // Show other durations under their own labels.
+            }
         }
-        // @NOTE: Codex API returns balance as a string, not a number
-        let balance = c.get("balance")?.as_str().and_then(|s| s.parse::<f64>().ok()).or_else(|| c.get("balance")?.as_f64())?;
-        Some(Credits::CodexBalance { balance_usd: balance })
-    });
+    }
 
-    let plan = data["plan_type"].as_str().map(|s| s.split('_').map(pango::capitalize).collect::<Vec<_>>().join(" "));
-
+    // @NOTE: Codex sends the balance as text. It's a credit count, not a dollar amount. - Sep 12, 2026
+    let c = &data["credits"];
+    let balance = if c["unlimited"] == true {
+        Some("Unlimited")
+    } else if c["has_credits"] == true {
+        Some(c["balance"].as_str().unwrap_or("Available"))
+    } else {
+        None
+    };
     ProviderUsage {
         session,
         weekly,
-        model_weekly: Vec::new(),
-        credits,
-        status,
-        plan,
+        extra_windows,
+        credits: balance.map(|balance| Credits::CodexBalance { balance: balance.to_string() }),
+        status: parse_status(&provider["status"]),
+        plan: data["plan_type"].as_str().map(|s| s.split('_').map(pango::capitalize).collect::<Vec<_>>().join(" ")),
         data_timestamp,
-        token_expired,
-        has_credentials,
-        cli_installed,
+        token_expired: provider["token_expired"].as_bool().unwrap_or(false),
+        has_credentials: provider["has_credentials"].as_bool().unwrap_or(false),
+        cli_installed: provider["cli_installed"].as_bool().unwrap_or(false),
     }
 }
-
-// --- Formatting helpers ---
 
 fn usage_color(used_percent: f64) -> &'static str {
-    let remaining = 100.0 - used_percent;
-    if remaining > 50.0 {
-        catppuccin::GREEN
-    } else if remaining > 25.0 {
-        catppuccin::YELLOW
-    } else if remaining > 10.0 {
-        catppuccin::PEACH
-    } else {
-        catppuccin::RED
+    match used_percent {
+        ..50.0 => catppuccin::GREEN,
+        ..=75.0 => catppuccin::YELLOW,
+        ..=90.0 => catppuccin::PEACH,
+        _ => catppuccin::RED,
     }
 }
 
-fn format_countdown(resets_at: &Option<String>) -> String {
-    let resets_at = match resets_at {
-        Some(s) => s,
-        None => return String::new(),
+fn format_countdown(resets_at: &Option<DateTime<Utc>>) -> String {
+    let reset_time = match resets_at {
+        Some(dt) => dt,
+        None => return String::new(), // No valid reset time to count down to.
     };
-    let reset_time = match DateTime::parse_from_rfc3339(resets_at) {
-        Ok(dt) => dt,
-        Err(_) => return String::new(),
-    };
-    let diff = reset_time.signed_duration_since(Utc::now());
-    let total_secs = diff.num_seconds();
-    if total_secs <= 0 {
-        return format!("<span foreground=\"{}\">resetting...</span>", catppuccin::MUTED);
-    }
-    let total_mins = diff.num_minutes();
-    let total_hours = diff.num_hours();
-    let total_days = diff.num_days();
-
-    if total_mins < 1 {
-        format!("resets in {total_secs}s")
-    } else if total_hours < 1 {
-        format!("resets in {total_mins}m")
-    } else if total_hours < 24 {
-        let mins = total_mins - total_hours * 60;
-        format!("resets in {total_hours}h {mins}m")
-    } else {
-        let hours = total_hours - total_days * 24;
-        format!("resets in {total_days}d {hours}h")
+    let total_secs = reset_time.signed_duration_since(Utc::now()).num_seconds();
+    match total_secs {
+        ..=0 => format!("<span foreground=\"{}\">resetting...</span>", catppuccin::MUTED), // Wait for the API's next reset time.
+        1..=59 => format!("resets in {total_secs}s"),
+        60..=3599 => format!("resets in {}m", total_secs / 60),
+        3600..=86399 => format!("resets in {}h {}m", total_secs / 3600, total_secs % 3600 / 60),
+        _ => format!("resets in {}d {}h", total_secs / 86400, total_secs % 86400 / 3600),
     }
 }
 
-/// Convert non-negative seconds to a human-readable age string: "just now", "42s ago", "5m ago", etc.
+/// Expects a non-negative age in seconds.
 fn format_age_text(secs: i64) -> String {
-    if secs == 0 {
-        "just now".to_string()
-    } else if secs < 60 {
-        format!("{secs}s ago")
-    } else if secs < 3600 {
-        format!("{}m ago", secs / 60)
-    } else if secs < 86400 {
-        format!("{}h ago", secs / 3600)
-    } else {
-        format!("{}d ago", secs / 86400)
+    match secs {
+        0 => "just now".to_string(),
+        ..=59 => format!("{secs}s ago"),
+        60..=3599 => format!("{}m ago", secs / 60),
+        3600..=86399 => format!("{}h ago", secs / 3600),
+        _ => format!("{}d ago", secs / 86400),
     }
-}
-
-/// Format data age suffix for "Last data" line: " (12m ago)" or empty if unknown.
-fn format_data_age(data_timestamp: &Option<String>) -> String {
-    let ts = match data_timestamp {
-        Some(s) => s,
-        None => return String::new(),
-    };
-    let dt = match DateTime::parse_from_rfc3339(ts) {
-        Ok(dt) => dt.with_timezone(&Utc),
-        Err(_) => return String::new(),
-    };
-    let secs = Utc::now().signed_duration_since(dt).num_seconds().max(0);
-    format!(" ({})", format_age_text(secs))
 }
 
 fn format_meter_line(label: &str, window: &RateWindow, pad_to: usize) -> String {
-    let color = usage_color(window.used_percent);
-    let bar = pango::meter_bar(window.used_percent, 10, color, catppuccin::MUTED);
+    let bar = pango::meter_bar(window.used_percent, 10, usage_color(window.used_percent), catppuccin::MUTED);
     let countdown = format_countdown(&window.resets_at);
     let pct = format!("{:.0}%", window.used_percent.clamp(0.0, 100.0));
-    // @NOTE: Pad first (using visual char width), then escape for Pango safety.
-    //   Pango renders escaped entities (e.g. &amp;) as single chars, so padding
-    //   on the unescaped string gives correct visual alignment.
-    let padded_label = format!("{label:pad_to$}");
-    let escaped_label = pango::escape(&padded_label);
+    let escaped_label = pango::escape(&format!("{label:pad_to$}")); // Pad before escaping so &amp; counts as one char.
     format!("{escaped_label} {bar}  {pct:>4}  {countdown}")
 }
 
@@ -264,7 +217,7 @@ fn format_status_line(status: &ProviderStatus) -> String {
 fn format_credits(credits: &Credits) -> String {
     match credits {
         Credits::ClaudeExtra { used_usd, limit_usd } => format!("Extra: ${used_usd:.2} / ${limit_usd:.2}"),
-        Credits::CodexBalance { balance_usd } => format!("Credits: ${balance_usd:.2}"),
+        Credits::CodexBalance { balance } => format!("Credits: {}", pango::escape(balance)),
     }
 }
 
@@ -275,53 +228,36 @@ fn format_provider_section(name: &str, usage: &ProviderUsage) -> String {
     };
     let mut lines: Vec<String> = vec![separator];
 
-    // Not configured: no credentials at all
     if !usage.has_credentials {
-        if !usage.cli_installed {
-            let url = if name == "Claude" { "claude.ai/cli" } else { "github.com/openai/codex" };
-            lines.push(format!("Not installed — see {url}"));
-        } else {
-            let cmd = if name == "Claude" { "claude login" } else { "codex login" };
-            lines.push(format!("Not logged in — run: {cmd}"));
-        }
+        let cmd = if name == "Claude" { "claude login" } else { "codex login" }; // We only get here if the CLI is installed.
+        lines.push(format!("Not logged in — run: {cmd}"));
         if let Some(ref status) = usage.status {
             lines.push(format_status_line(status));
         }
-        return lines.join("\n");
+        return lines.join("\n"); // Show login help and service status, but no usage while logged out.
     }
 
-    // Token expired state
     if usage.token_expired {
         let cmd = if name == "Claude" { "claude login" } else { "codex login" };
         lines.push(format!("Token expired — run: {cmd}"));
-        if usage.session.is_some() || usage.weekly.is_some() || !usage.model_weekly.is_empty() || usage.credits.is_some() {
-            let age_suffix = format_data_age(&usage.data_timestamp);
-            lines.push(format!("Last data{age_suffix}:"));
-        }
+    }
+    if let Some(timestamp) = usage.data_timestamp {
+        lines.push(format_freshness(timestamp));
     }
 
-    // Calculate max label width for meter alignment
-    let mut all_labels: Vec<String> = Vec::new();
-    if usage.session.is_some() {
-        all_labels.push("Rate (5h):".to_string());
+    let mut windows = Vec::new();
+    if let Some(w) = &usage.session {
+        windows.push(("Rate (5h):", w));
     }
-    if usage.weekly.is_some() {
-        all_labels.push("Weekly:".to_string());
+    if let Some(w) = &usage.weekly {
+        windows.push(("Weekly:", w));
     }
-    for (model, _) in &usage.model_weekly {
-        all_labels.push(format!("{model} weekly:"));
+    for (label, w) in &usage.extra_windows {
+        windows.push((label.as_str(), w));
     }
-    let max_label = all_labels.iter().map(|l| l.len()).max().unwrap_or(0);
-
-    if let Some(ref w) = usage.session {
-        lines.push(format_meter_line("Rate (5h):", w, max_label));
-    }
-    if let Some(ref w) = usage.weekly {
-        lines.push(format_meter_line("Weekly:", w, max_label));
-    }
-    for (model, w) in &usage.model_weekly {
-        let label = format!("{model} weekly:");
-        lines.push(format_meter_line(&label, w, max_label));
+    let max_label = windows.iter().map(|(label, _)| label.chars().count()).max().unwrap_or(0);
+    for (label, w) in windows {
+        lines.push(format_meter_line(label, w, max_label));
     }
 
     if let Some(ref credits) = usage.credits {
@@ -335,57 +271,43 @@ fn format_provider_section(name: &str, usage: &ProviderUsage) -> String {
 }
 
 fn format_bar_line(prefix: &str, usage: &ProviderUsage) -> String {
+    // Use weekly usage for a steadier reading in the bar than session usage.
     let weekly = match usage.weekly.as_ref() {
         Some(w) => w,
-        // Active provider but no weekly data — show muted placeholder
         None => return format!("<span foreground=\"{}\">{prefix} —</span>", catppuccin::MUTED),
     };
     let clamped = weekly.used_percent.clamp(0.0, 100.0);
     let pct = clamped.round() as i64;
-    if usage.token_expired {
-        // Muted color with ? suffix — signals data staleness (D17)
-        format!("<span foreground=\"{}\">{prefix} {pct}?</span>", catppuccin::MUTED)
+    if usage.token_expired || usage.data_timestamp.is_none_or(|ts| (Utc::now() - ts).num_seconds() >= 240) {
+        format!("<span foreground=\"{}\">{prefix} {pct}?</span>", catppuccin::MUTED) // Show that this reading may be out of date.
     } else {
         let color = usage_color(clamped);
         format!("<span foreground=\"{color}\">{prefix} {pct}</span>")
     }
 }
 
-fn format_freshness(timestamp: &str) -> String {
-    let cache_time = match DateTime::parse_from_rfc3339(timestamp) {
-        Ok(dt) => dt.with_timezone(&Utc),
-        Err(_) => return String::new(),
-    };
-    let age = Utc::now().signed_duration_since(cache_time);
-    let secs = age.num_seconds().max(0);
+fn format_freshness(timestamp: DateTime<Utc>) -> String {
+    // Don't show a negative age if the clocks disagree or ours moves back.
+    let secs = Utc::now().signed_duration_since(timestamp).num_seconds().max(0);
 
     let age_text = format_age_text(secs);
 
-    // Color by cache age: muted (<4m), yellow (4-10m), peach (>10m)
-    let color = if secs < 240 {
-        catppuccin::MUTED
-    } else if secs < 600 {
-        catppuccin::YELLOW
-    } else {
-        catppuccin::PEACH
+    let color = match secs {
+        ..=239 => catppuccin::MUTED,
+        240..=599 => catppuccin::YELLOW,
+        _ => catppuccin::PEACH,
     };
 
-    format!("<span foreground=\"{color}\">Updated {age_text}</span>")
+    format!("<span foreground=\"{color}\">Data fetched {age_text}</span>")
 }
 
 pub fn parse_data(data: Value) -> Result<String, Box<dyn std::error::Error>> {
-    let timestamp = data["timestamp"].as_str().unwrap_or("");
-    let claude_entry = &data["claude"];
-    let codex_entry = &data["codex"];
+    let claude = parse_claude_entry(&data["claude"]);
+    let codex = parse_codex_entry(&data["codex"]);
 
-    let claude = parse_claude_entry(claude_entry);
-    let codex = parse_codex_entry(codex_entry);
-
-    // Show a provider if its CLI is installed OR it has credentials
     let show_claude = claude.cli_installed || claude.has_credentials;
     let show_codex = codex.cli_installed || codex.has_credentials;
 
-    // Bar text: one line per visible provider with session data
     let mut bar_lines: Vec<String> = Vec::new();
     if show_claude {
         bar_lines.push(format_bar_line("C", &claude));
@@ -395,13 +317,11 @@ pub fn parse_data(data: Value) -> Result<String, Box<dyn std::error::Error>> {
     }
 
     let bar_text = if bar_lines.is_empty() {
-        // Both providers disabled — single muted 󰻀 nf-md-head_cog icon
-        format!("<span foreground=\"{}\">\u{F0EC0}</span>", catppuccin::MUTED)
+        format!("<span foreground=\"{}\">\u{F0EC0}</span>", catppuccin::MUTED) // 󰻀 nf-md-head_cog
     } else {
         format!("<span size=\"x-small\">{}</span>", bar_lines.join("\n"))
     };
 
-    // Tooltip
     let mut tooltip_parts: Vec<String> = vec!["<span size=\"xx-large\">AI Usage</span>".to_string()];
     if show_claude {
         tooltip_parts.push(format_provider_section("Claude", &claude));
@@ -409,14 +329,8 @@ pub fn parse_data(data: Value) -> Result<String, Box<dyn std::error::Error>> {
     if show_codex {
         tooltip_parts.push(format_provider_section("Codex", &codex));
     }
-    if !timestamp.is_empty() {
-        tooltip_parts.push(format_freshness(timestamp));
-    }
 
     let tooltip = format!("<tt>{}</tt>", tooltip_parts.join("\n\n"));
 
-    Ok(serde_json::to_string(&json!({
-        "text": bar_text,
-        "tooltip": tooltip,
-    }))?)
+    Ok(serde_json::to_string(&json!({"text": bar_text, "tooltip": tooltip}))?)
 }

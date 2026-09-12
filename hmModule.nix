@@ -30,7 +30,6 @@ in {
 
       Service = {
         ExecStart = "${cfg.package}/bin/waybap serve 127.0.0.1:6963";
-        ExecReload = "${pkgs.coreutils}/bin/kill -SIGUSR2 $MAINPID";
         Restart = "on-failure";
         KillMode = "mixed";
       };

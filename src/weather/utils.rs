@@ -16,24 +16,21 @@ pub fn format_conditions(code: i32, precip: i32, cloud: i32, snow: f64, vis: f64
         parts.push(format!("Snow {snow:.1}cm"));
     }
     if vis < 1000.0 {
-        parts.push(format!("Vis {}m", vis.round() as i32));
+        parts.push(format!("Vis {}m", vis.round() as i32)); // Only flag visibility below 1 km.
     }
+    // Add cloud cover to clear or partly cloudy forecasts. The other conditions already describe the sky.
     let cloud_suffix =
         if (code == 0 || code == 1 || code == 2) && cloud > 0 { format!(" (☁️ {cloud}%)") } else { String::new() };
     if parts.is_empty() { cloud_suffix } else { format!(", {}{cloud_suffix}", parts.join(", ")) }
 }
 
 fn color_temp_fmt(display: String, temp: i32) -> String {
-    if temp <= -10 {
-        format!("<span foreground=\"{}\">{display}</span>", catppuccin::MUTED)
-    } else if temp <= 0 {
-        format!("<span foreground=\"{}\">{display}</span>", catppuccin::BLUE)
-    } else if temp >= 31 {
-        format!("<span foreground=\"{}\">{display}</span>", catppuccin::RED)
-    } else if temp >= 16 {
-        format!("<span foreground=\"{}\">{display}</span>", catppuccin::PEACH)
-    } else {
-        display
+    match temp {
+        ..=-10 => format!("<span foreground=\"{}\">{display}</span>", catppuccin::MUTED),
+        -9..=0 => format!("<span foreground=\"{}\">{display}</span>", catppuccin::BLUE),
+        1..=15 => display,
+        16..=30 => format!("<span foreground=\"{}\">{display}</span>", catppuccin::PEACH),
+        31.. => format!("<span foreground=\"{}\">{display}</span>", catppuccin::RED),
     }
 }
 

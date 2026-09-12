@@ -1,86 +1,73 @@
-use std::{fs, process::Command, sync::Mutex, time::Duration, time::Instant};
+use std::{fs, process::Command, sync::Mutex, sync::Once, thread, time::Duration, time::Instant};
 
 use super::{SensorData, SensorGroup, SensorReading};
 
-// nvidia-smi is expensive (~100ms per call), so we cache its result and only
-// re-query every NVIDIA_INTERVAL seconds. The hwmon sysfs reads are virtually
-// free (kernel virtual filesystem) and run every time.
+// nvidia-smi is expensive, so refresh it less often than the once-per-second hwmon reads.
 const NVIDIA_INTERVAL: Duration = Duration::from_secs(10);
+const NVIDIA_TIMEOUT: Duration = Duration::from_secs(5);
 
 static NVIDIA_CACHE: Mutex<(Vec<f64>, Option<Instant>)> = Mutex::new((Vec::new(), None));
+static NVIDIA_WORKER: Once = Once::new();
 
 fn query_nvidia() -> Vec<f64> {
-    let mut cache = match NVIDIA_CACHE.lock() {
-        Ok(cache) => cache,
-        Err(err) => {
-            eprintln!("ERROR: NVIDIA temperature cache was poisoned, continuing with cached data");
-            err.into_inner()
-        }
-    };
-    let stale = cache.1.map(|t| t.elapsed() >= NVIDIA_INTERVAL).unwrap_or(true);
-    if !stale {
-        return cache.0.clone();
-    }
-
-    // Run nvidia-smi in a thread with a 5-second timeout to avoid blocking
-    // the scheduler forever if nvidia-smi hangs (driver bug, GPU lockup).
-    let (tx, rx) = std::sync::mpsc::channel::<Vec<f64>>();
-    std::thread::spawn(move || {
-        let result = Command::new("nvidia-smi")
-            .args(["--query-gpu=temperature.gpu", "--format=csv,noheader,nounits"])
-            .output()
-            .ok()
-            .and_then(|out| {
-                if out.status.success() {
-                    let stdout = String::from_utf8(out.stdout).ok()?;
-                    Some(stdout.lines().filter_map(|l| l.trim().parse().ok()).collect())
-                } else {
-                    None
-                }
-            })
-            .unwrap_or_default();
-        let _ = tx.send(result);
+    NVIDIA_WORKER.call_once(|| {
+        let (tx, rx) = std::sync::mpsc::channel();
+        // @NOTE: Use one worker so a stuck driver cannot leave a growing pile of nvidia-smi processes. - Sep 12, 2026
+        thread::spawn(move || {
+            loop {
+                let temps = Command::new("nvidia-smi")
+                    .args(["--query-gpu=temperature.gpu", "--format=csv,noheader,nounits"])
+                    .output()
+                    .ok()
+                    .filter(|out| out.status.success())
+                    .and_then(|out| String::from_utf8(out.stdout).ok())
+                    .map(|stdout| {
+                        stdout
+                            .lines()
+                            .filter_map(|l| l.trim().parse().ok())
+                            .filter(|t| *t != 0.0 && (-40.0..=150.0).contains(t))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                *NVIDIA_CACHE.lock().expect("NVIDIA cache lock poisoned") = (temps, Some(Instant::now()));
+                let _ = tx.send(()); // Only startup waits here. Later sends can fail because the receiver is gone.
+                thread::sleep(NVIDIA_INTERVAL);
+            }
+        });
+        let _ = rx.recv_timeout(NVIDIA_TIMEOUT); // Wait briefly for the test command's first reading.
     });
-
-    let temps = rx.recv_timeout(Duration::from_secs(5)).unwrap_or_default();
-    *cache = (temps.clone(), Some(Instant::now()));
-    temps
+    let cache = NVIDIA_CACHE.lock().expect("NVIDIA cache lock poisoned");
+    // Hide old readings if a refresh gets stuck. Show temperatures again when the worker gets fresh readings.
+    if cache.1.is_some_and(|at| at.elapsed() <= NVIDIA_INTERVAL + NVIDIA_TIMEOUT) { cache.0.clone() } else { Vec::new() }
 }
 
 pub fn query() -> Option<String> {
     let mut sensors = Vec::new();
 
-    let entries = fs::read_dir("/sys/class/hwmon")
-        .map_err(|err| {
-            eprintln!("ERROR: failed to read /sys/class/hwmon: {err}");
-        })
-        .ok()?;
+    let entries =
+        fs::read_dir("/sys/class/hwmon").inspect_err(|err| eprintln!("ERROR: failed to read /sys/class/hwmon: {err}")).ok()?;
 
     for entry in entries.flatten() {
         let path = entry.path();
-        let name = match fs::read_to_string(path.join("name")) {
-            Ok(n) => n.trim().to_string(),
-            Err(_) => continue,
-        };
+        let Ok(name) = fs::read_to_string(path.join("name")) else { continue }; // Keep going if one device can't be read.
+        let name = name.trim().to_string();
+        let Ok(files) = fs::read_dir(&path) else { continue }; // The device may have disappeared since we listed it.
+        let mut inputs: Vec<u32> = files
+            .flatten()
+            .filter_map(|file| file.file_name().to_str()?.strip_prefix("temp")?.strip_suffix("_input")?.parse().ok())
+            .collect();
+        inputs.sort_unstable(); // Keep numeric order because the bar uses coretemp's first reading.
 
         let mut readings = Vec::new();
-        for i in 1..=24 {
-            let temp_path = path.join(format!("temp{i}_input"));
-            let temp_str = match fs::read_to_string(&temp_path) {
-                Ok(s) => s,
-                Err(_) => continue,
-            };
-            let temp_mc: f64 = match temp_str.trim().parse() {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
+        for i in inputs {
+            let Ok(temp_str) = fs::read_to_string(path.join(format!("temp{i}_input"))) else { continue }; // Keep other readings.
+            let Ok(temp_mc) = temp_str.trim().parse::<f64>() else { continue }; // One bad reading shouldn't hide the others.
             let temp = temp_mc / 1000.0;
 
-            // Filter out disconnected/inactive sensors: sysfs reports exactly 0 millidegrees
-            // for unconnected motherboard inputs (e.g. PCH virtual sensors on nct6799).
-            // This is safe because no component in a running PC will be at exactly 0.000°C.
+            // @NOTE: Unconnected motherboard inputs can report zero (e.g. PCH on nct6799).
+            // Skipping them also hides real 0°C readings. - Sep 12, 2026
             if temp_mc == 0.0 || !(-40.0..=150.0).contains(&temp) {
-                continue;
+                continue; // Skip disconnected sensors, out-of-range temperatures, NaN and infinity.
             }
 
             let label = fs::read_to_string(path.join(format!("temp{i}_label")))
@@ -95,11 +82,7 @@ pub fn query() -> Option<String> {
         }
     }
 
-    // Sort by name for consistent ordering across reboots
-    sensors.sort_by(|a, b| a.name.cmp(&b.name));
+    sensors.sort_by(|a, b| a.name.cmp(&b.name)); // Keep the sysfs order for chips with the same name.
 
-    let nvidia = query_nvidia();
-
-    let data = SensorData { sensors, nvidia };
-    serde_json::to_string(&data).ok()
+    serde_json::to_string(&SensorData { sensors, nvidia: query_nvidia() }).ok()
 }

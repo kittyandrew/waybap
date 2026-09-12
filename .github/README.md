@@ -127,5 +127,4 @@ nix develop -c cargo fmt --check
 nix develop -c cargo clippy --all-targets --all-features -- -D warnings
 nix develop -c cargo test --all-targets --all-features --locked
 nix develop -c cargo build --all-targets --all-features --locked
-allium check docs/specs/waybap.allium
 ```

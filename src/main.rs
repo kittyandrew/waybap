@@ -17,18 +17,10 @@ fn help_text(program: &str) {
 }
 
 fn start_scheduler() -> Result<(), ()> {
-    scheduler::Job::new("weather", 60 * 10, weather::query)
-        .run()
-        .map_err(|err| eprintln!("ERROR: failed to start weather scheduler: {err}"))?;
-    scheduler::Job::new("crypto", 60 * 15, crypto::query)
-        .run()
-        .map_err(|err| eprintln!("ERROR: failed to start crypto scheduler: {err}"))?;
-    scheduler::Job::new("sensors", 1, sensors::query)
-        .run()
-        .map_err(|err| eprintln!("ERROR: failed to start sensors scheduler: {err}"))?;
-    scheduler::Job::new("usage", 120, usage::query)
-        .run()
-        .map_err(|err| eprintln!("ERROR: failed to start usage scheduler: {err}"))?;
+    scheduler::start("weather", 600, weather::query).map_err(|err| eprintln!("ERROR: cannot start weather scheduler: {err}"))?;
+    scheduler::start("crypto", 900, crypto::query).map_err(|err| eprintln!("ERROR: cannot start crypto scheduler: {err}"))?;
+    scheduler::start("sensors", 1, sensors::query).map_err(|err| eprintln!("ERROR: cannot start sensors scheduler: {err}"))?;
+    scheduler::start("usage", 120, usage::query).map_err(|err| eprintln!("ERROR: cannot start usage scheduler: {err}"))?;
     Ok(())
 }
 
@@ -38,20 +30,13 @@ fn run_query(
 ) -> Result<(), ()> {
     let raw = if use_cache {
         let cache_fp = scheduler::get_cache_fp(name);
-        read_to_string(&cache_fp).map_err(|err| {
-            eprintln!("ERROR: failed to read cache file '{cache_fp}': {err}");
-        })?
+        read_to_string(&cache_fp).map_err(|err| eprintln!("ERROR: failed to read cache file '{cache_fp}': {err}"))?
     } else {
-        query().ok_or_else(|| {
-            eprintln!("ERROR: {name} query failed");
-        })?
+        query().ok_or_else(|| eprintln!("ERROR: {name} query failed"))?
     };
-    let value = serde_json::from_str::<serde_json::Value>(&raw).map_err(|err| {
-        eprintln!("ERROR: failed to parse {name} response JSON: {err}");
-    })?;
-    let result = parse(value).map_err(|err| {
-        eprintln!("ERROR: {name} parsing failed: {err}");
-    })?;
+    let value = serde_json::from_str::<serde_json::Value>(&raw)
+        .map_err(|err| eprintln!("ERROR: failed to parse {name} response JSON: {err}"))?;
+    let result = parse(value).map_err(|err| eprintln!("ERROR: {name} parsing failed: {err}"))?;
     println!("{result}");
     Ok(())
 }
@@ -66,9 +51,12 @@ fn entry() -> Result<(), ()> {
     })?;
     match subcommand.as_str() {
         "serve" => {
-            start_scheduler()?;
-
             let address = args.next().unwrap_or("127.0.0.1:6969".to_string());
+            if args.next().is_some() {
+                eprintln!("ERROR: 'serve' accepts only an optional address");
+                return Err(());
+            }
+            start_scheduler()?;
             server::start(&address)
         }
 
@@ -77,7 +65,7 @@ fn entry() -> Result<(), ()> {
                 help_text(&program);
                 eprintln!("ERROR: 'test' requires a target: weather, crypto, sensors, or usage");
             })?;
-            let use_cache = args.next().map(|a| a == "--cache").unwrap_or(false);
+            let use_cache = args.next().as_deref() == Some("--cache");
             match target.as_str() {
                 "weather" => run_query("weather", use_cache, weather::query, weather::parse_data),
                 "crypto" => run_query("crypto", use_cache, crypto::query, crypto::parse_data),
