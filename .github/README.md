@@ -30,17 +30,7 @@ Add waybap as a flake input:
 inputs.waybap.url = "github:kittyandrew/waybap";
 ```
 
-### Option 1: Home Manager module
-
-Import the module and enable the service. This installs the binary and creates a systemd user service that starts with your Hyprland session.
-
-```nix
-imports = [ inputs.waybap.homeManagerModule ];
-
-services.waybap.enable = true;
-```
-
-### Option 2: Manual setup
+### Setup
 
 Install the package and start it yourself (e.g. via Hyprland's `exec-once`):
 
@@ -120,7 +110,7 @@ cargo build --release
 nix develop -c actionlint
 nix develop -c zizmor .github/workflows
 nix develop -c alejandra -c .
-nix develop -c deadnix flake.nix hmModule.nix
+nix develop -c deadnix flake.nix
 nix flake check --print-build-logs
 nix build .#waybap --print-build-logs
 nix develop -c cargo fmt --check

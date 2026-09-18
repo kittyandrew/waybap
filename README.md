@@ -23,14 +23,6 @@ nix build .#waybap
 nix run .#waybap -- serve
 ```
 
-## Home Manager
-
-The flake exports a Home Manager module as `homeManagerModules.waybap` (aliased as `homeManagerModule`):
-
-```nix
-imports = [inputs.waybap.homeManagerModules.waybap];
-```
-
 ## Binary cache
 
 Builds are published to `cache.kittyandrew.dev`, so Nix can download these outputs instead of rebuilding them.

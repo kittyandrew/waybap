@@ -38,7 +38,7 @@ src/
   - `nix develop -c actionlint`
   - `nix develop -c zizmor .github/workflows`
   - `nix develop -c alejandra -c .`
-  - `nix develop -c deadnix flake.nix hmModule.nix`
+  - `nix develop -c deadnix flake.nix`
   - `nix flake check --print-build-logs`
   - `nix build .#waybap --print-build-logs`
   - `nix develop -c cargo fmt --check`

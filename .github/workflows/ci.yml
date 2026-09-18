@@ -40,7 +40,7 @@ jobs:
         run: nix develop -c alejandra -c .
 
       - name: Nix lint (deadnix)
-        run: nix develop -c deadnix flake.nix hmModule.nix
+        run: nix develop -c deadnix flake.nix
 
       - name: Flake check
         run: nix flake check --print-build-logs
